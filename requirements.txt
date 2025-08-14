@@ -5,3 +5,5 @@ gtts==2.5.0
 pydub==0.25.1
 SpeechRecognition==3.10.0
 pocketsphinx==0.1.15
+swig 
+ffmpeg
