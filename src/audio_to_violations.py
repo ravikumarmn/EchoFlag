@@ -14,16 +14,9 @@ from typing import Dict, Any, List, Tuple, Optional
 import tempfile
 
 from openai import OpenAI
+import speech_recognition as sr
+from pydub import AudioSegment
 from dotenv import load_dotenv
-
-# Defer imports that may fail on Py3.13 due to removed stdlib modules (e.g., aifc)
-SR_AVAILABLE = True
-SR_IMPORT_ERR = None
-try:
-    import speech_recognition as sr  # type: ignore
-except Exception as _e:  # ImportError or its causes
-    SR_AVAILABLE = False
-    SR_IMPORT_ERR = str(_e)
 
 # Load environment variables
 load_dotenv()
@@ -50,8 +43,8 @@ class AudioToViolations:
             if not os.path.exists(directory):
                 os.makedirs(directory)
         
-        # Initialize recognizer if available
-        self.recognizer = sr.Recognizer() if SR_AVAILABLE else None
+        # Initialize recognizer
+        self.recognizer = sr.Recognizer()
         
         # Custom prompts for LLM
         self.system_prompt = (
@@ -92,11 +85,7 @@ class AudioToViolations:
         temp_wav_path = temp_wav.name
         temp_wav.close()
         
-        # Convert MP3 to WAV (lazy import pydub)
-        try:
-            from pydub import AudioSegment  # type: ignore
-        except Exception as e:
-            raise RuntimeError(f"Audio conversion requires pydub/ffmpeg and failed to import: {e}")
+        # Convert MP3 to WAV
         audio = AudioSegment.from_mp3(mp3_file)
         audio.export(temp_wav_path, format="wav")
         
@@ -113,13 +102,6 @@ class AudioToViolations:
         Returns:
             str: Transcribed text
         """
-        if not SR_AVAILABLE or self.recognizer is None:
-            raise RuntimeError(
-                "Transcription backend unavailable: failed to import SpeechRecognition. "
-                f"Import error: {SR_IMPORT_ERR}. On hosted Python 3.13, stdlib 'aifc' was removed; "
-                "use text-only analysis in the app, or deploy on Python <=3.12."
-            )
-
         # Check if file is MP3 and convert if needed
         if audio_file.lower().endswith('.mp3'):
             wav_file = self.convert_mp3_to_wav(audio_file)
