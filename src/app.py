@@ -22,7 +22,7 @@ from typing import Optional
 
 import streamlit as st
 from dotenv import load_dotenv
-from pydub import AudioSegment
+from shutil import which as sh_which
 
 # Ensure we can import project modules when running as a script
 PROJECT_ROOT = os.path.dirname(os.path.dirname(__file__))
@@ -51,6 +51,11 @@ st.set_page_config(page_title="EchoFlag - Audio Violations", layout="centered")
 st.title("EchoFlag – Audio Violation Tester")
 st.caption("Upload audio or generate a dummy conversation that violates mutual fund distribution rules, then analyze and view JSON.")
 
+# Detect ffmpeg availability without importing pydub
+FFMPEG_AVAILABLE = sh_which("ffmpeg") is not None
+if not FFMPEG_AVAILABLE:
+    st.warning("ffmpeg not detected. Uploads are limited to WAV, and generated conversations will be analyzed as text (no audio synthesis).")
+
 with st.sidebar:
     st.header("Settings")
     model = st.selectbox("LLM Model (analysis)", ["gpt-4"], index=0)
@@ -73,7 +78,8 @@ def _to_wav_if_needed(path: str) -> str:
     if ext in [".wav"]:
         return path
     try:
-        seg = AudioSegment.from_file(path)
+        # Lazy-import pydub only when we actually need it
+        from pydub import AudioSegment
         out_path = tempfile.NamedTemporaryFile(suffix=".wav", delete=False).name
         seg.export(out_path, format="wav")
         return out_path
@@ -86,12 +92,13 @@ upload_tab, generate_tab = st.tabs(["Upload Audio", "Generate Dummy Audio (LLM)"
 
 with upload_tab:
     st.subheader("1) Upload an audio file")
-    uploaded = st.file_uploader("Choose an audio file (mp3/mp4/wav)", type=["mp3", "mp4", "wav"])    
+    allowed_types = ["wav"] if not FFMPEG_AVAILABLE else ["mp3", "mp4", "wav"]
+    uploaded = st.file_uploader(f"Choose an audio file ({', '.join(allowed_types)})", type=allowed_types)
     analyze_clicked = st.button("Analyze Uploaded Audio", type="primary", disabled=uploaded is None)
 
     if analyze_clicked and uploaded is not None:
         path = _save_upload_to_temp(uploaded)
-        wav_path = _to_wav_if_needed(path)
+        wav_path = path if (not FFMPEG_AVAILABLE) else _to_wav_if_needed(path)
 
         st.info("Transcribing and analyzing…")
         analyzer = AudioToViolations(output_dir="violations_output")
@@ -116,32 +123,55 @@ with generate_tab:
         generate_clicked = st.button("Generate Conversation + Analyze", type="primary")
 
         if generate_clicked:
-            # Generate MP4 (audio-only) plus a temp MP3 for playback/analysis
-            base_out = os.path.join("audio_output", f"conversation_{datetime.now().strftime('%Y%m%d_%H%M%S')}")
-            mp4_path = base_out + ".mp4"
-
             try:
-                os.makedirs("audio_output", exist_ok=True)
-                conv = LLMToAudioConversation(output_path=mp4_path, silence_ms=silence_ms)
-                dialogue = conv.generate_dialogue(severity, n_viol)
-                if not dialogue:
+                # Always generate dialogue via LLM
+                conv_dialogue = []
+                if HAS_LLM_GEN:
+                    os.makedirs("audio_output", exist_ok=True)
+                    base_out = os.path.join("audio_output", f"conversation_{datetime.now().strftime('%Y%m%d_%H%M%S')}")
+                    mp4_path = base_out + ".mp4"
+                    conv = LLMToAudioConversation(output_path=mp4_path, silence_ms=silence_ms)
+                    conv_dialogue = conv.generate_dialogue(severity, n_viol)
+                if not conv_dialogue:
                     st.error("LLM did not return a dialogue. Try again.")
-                else:
-                    audio_seg = conv.synthesize_and_combine(dialogue)
-                    saved_mp4 = conv.export_mp4(audio_seg)
+                    st.stop()
 
-                    # Also export MP3 for reliable browser playback and analyzer path
+                analyzer = AudioToViolations(output_dir="violations_output")
+
+                if FFMPEG_AVAILABLE:
+                    # Audio synthesis path
+                    audio_seg = conv.synthesize_and_combine(conv_dialogue)
+                    # Export MP3 for playback and analysis
                     mp3_path = base_out + ".mp3"
                     audio_seg.export(mp3_path, format="mp3")
+                    # Also keep MP4 if desired
+                    conv.export_mp4(audio_seg)
 
                     st.audio(mp3_path)
-                    st.write(f"Saved: {saved_mp4}")
-
                     st.info("Transcribing and analyzing generated audio…")
-                    analyzer = AudioToViolations(output_dir="violations_output")
                     result = analyzer.process_and_analyze(audio_file=mp3_path, use_google=use_google, model=model)
-                    st.success("Analysis complete")
-                    st.download_button("Download Analysis JSON", data=str(result).encode("utf-8"), file_name=f"analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json", mime="application/json")
-                    st.json(result)
+                else:
+                    # Text-only analysis path (no audio synthesis)
+                    # Build paragraph from dialogue
+                    paragraph = " \n".join([f"{spk}: {txt}" for spk, txt in conv_dialogue]).strip()
+                    sentence_spans = analyzer.split_sentences(paragraph)
+                    analysis = analyzer.analyze_with_llm(paragraph, model)
+                    result = analyzer.align_or_validate_spans(analysis, paragraph, sentence_spans)
+                    # Prepare output consistent with audio flow
+                    result = analyzer.build_output(
+                        audio_file="LLM_generated_text_only",
+                        paragraph=paragraph,
+                        result=result,
+                        sentence_spans=sentence_spans,
+                    )
+
+                st.success("Analysis complete")
+                st.download_button(
+                    "Download Analysis JSON",
+                    data=str(result).encode("utf-8"),
+                    file_name=f"analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+                    mime="application/json",
+                )
+                st.json(result)
             except Exception as e:
                 st.error(f"Generation or analysis failed: {e}")
