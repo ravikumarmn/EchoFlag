@@ -1,9 +1,6 @@
-google-cloud-speech==2.21.0
-google-cloud-texttospeech==2.14.1
+streamlit==1.37.1
+openai>=1.0.0
 python-dotenv==1.0.0
-pyttsx3==2.90
-json2audio==0.1.5
 gtts==2.5.0
 pydub==0.25.1
 SpeechRecognition==3.10.0
-streamlit==1.37.1
