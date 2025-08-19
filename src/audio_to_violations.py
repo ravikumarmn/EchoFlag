@@ -123,13 +123,22 @@ class AudioToViolations:
                     text = self.recognizer.recognize_google(audio_data)
                 else:
                     # Use Sphinx (offline, but less accurate)
-                    text = self.recognizer.recognize_sphinx(audio_data)
+                    try:
+                        text = self.recognizer.recognize_sphinx(audio_data)
+                    except Exception as e:
+                        return (
+                            "Offline transcription requires pocketsphinx. "
+                            "Enable 'Use Google Web Speech' in the sidebar or install pocketsphinx locally. "
+                            f"Error: {e}"
+                        )
                 
                 return text
         except sr.UnknownValueError:
             return "Speech Recognition could not understand audio"
         except sr.RequestError as e:
             return f"Could not request results; {e}"
+        except Exception as e:
+            return f"Transcription failed: {e}"
         finally:
             # Clean up temporary file if created
             if is_temp and os.path.exists(wav_file):

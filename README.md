@@ -1,6 +1,10 @@
 # EchoFlag
 
-A system for live audio transcription and violation flagging using Google Cloud Speech-to-Text with speaker differentiation.
+A system for audio transcription and violation flagging with a Streamlit UI.
+
+Notes:
+- The Streamlit app in `src/app.py` uses the free Google Web Speech endpoint via `SpeechRecognition` by default (no Google Cloud project required) and OpenAI for violation analysis.
+- If you wish to use Google Cloud Speech-to-Text, that is an optional future enhancement and is not required for this app to run.
 
 ## Project Overview
 
@@ -16,7 +20,7 @@ EchoFlag transcribes audio files with speaker differentiation and flags violatio
    pip install -r requirements.txt
    ```
 
-2. **Google Cloud Setup (Step-by-Step)**:
+2. (Optional) **Google Cloud Setup (Step-by-Step)**:
 
    ### Create a Google Cloud Account
    1. Go to [cloud.google.com](https://cloud.google.com/)
@@ -63,18 +67,15 @@ EchoFlag transcribes audio files with speaker differentiation and flags violatio
    8. Store this file securely - it grants access to your Google Cloud resources
 
 3. **Environment Variables**:
-   The `.env` file should contain:
+   Required for the app to analyze violations via OpenAI:
+   ```
+   OPENAI_API_KEY=sk-...
+   ```
+   You can place this in a local `.env` for development. In hosted environments (e.g., Streamlit Cloud), set it as an environment variable in the app settings. 
+   
+   Optional (only if you choose to integrate Google Cloud STT later):
    ```
    GOOGLE_APPLICATION_CREDENTIALS=/path/to/your-service-account-key.json
-   ```
-   
-   Alternatively, set the environment variable in your terminal:
-   ```bash
-   # For macOS/Linux
-   export GOOGLE_APPLICATION_CREDENTIALS="/path/to/your-service-account-key.json"
-   
-   # For Windows PowerShell
-   $env:GOOGLE_APPLICATION_CREDENTIALS="C:\path\to\your-service-account-key.json"
    ```
 
 ## Usage
@@ -96,6 +97,18 @@ python flagging.py path/to/transcript_file.json
 - `transcribe.py`: Audio transcription module with speaker differentiation
 - `flagging.py`: Violation flagging system with severity levels
 - `requirements.txt`: Project dependencies
+
+## Deployment (Streamlit Community Cloud)
+
+1. **Push to GitHub**: Ensure this repository (including `requirements.txt` and `packages.txt`) is pushed to GitHub.
+2. **Create App**: Go to https://share.streamlit.io, click "New app", and select this repo/branch.
+3. **Entry point**: Set the file to `src/app.py`.
+4. **Secrets / Env Vars**: In the app settings, add environment variable:
+   - `OPENAI_API_KEY`: your OpenAI API key
+5. **System dependency**: The app needs FFmpeg for audio processing. Streamlit Cloud installs it via the provided `packages.txt`.
+6. **Run**: Deploy. The app will build and start automatically.
+
+If you see build errors related to `pocketsphinx`, `swig`, or `ffmpeg` pip packages, remove them from `requirements.txt` (they are not needed). FFmpeg is installed as a system package via `packages.txt`.
 
 ## Future Enhancements
 
