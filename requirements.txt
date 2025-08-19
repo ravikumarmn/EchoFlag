@@ -6,3 +6,4 @@ pydub==0.25.1
 SpeechRecognition==3.10.0
 pyaudio
 rich==13.7.0
+PyAudio
