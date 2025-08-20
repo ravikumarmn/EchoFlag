@@ -1,10 +1,15 @@
 #!/usr/bin/env python3
-# Apply pydub patch first before any imports
+# Apply patches first before any imports
 try:
+    # Import aifc patch first
+    from aifc_patch import apply_patches as apply_aifc_patches
+    apply_aifc_patches()
+    # Then import pydub patch
     from pydub_patch import apply_patches
     apply_patches()
-except ImportError:
-    pass
+except ImportError as e:
+    import sys
+    print(f"Error applying patches: {e}", file=sys.stderr)
 
 """
 Generate a Salesperson vs Client conversation with explicit mutual fund distribution violations

@@ -1,9 +1,16 @@
 """
-Patch for pydub to handle missing pyaudioop module on Streamlit Cloud.
-This provides fallback functionality when pyaudioop is not available.
+Patch for pydub to handle missing pyaudioop and aifc modules on Streamlit Cloud.
+This provides fallback functionality when these modules are not available.
 """
 import sys
 import warnings
+
+# Try to import aifc_patch
+try:
+    from aifc_patch import apply_patches as apply_aifc_patches
+    apply_aifc_patches()
+except ImportError:
+    pass
 
 # Try to patch before pydub is imported
 def apply_patches():
