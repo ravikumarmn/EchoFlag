@@ -23,8 +23,7 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 
-# Configure OpenAI client
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+# Configure OpenAI client (removed global client to avoid conflicts)
 
 class AudioToViolations:
     """Process audio files to detect compliance violations with span identification."""
@@ -249,8 +248,8 @@ class AudioToViolations:
         ]
         
         try:
-            # Call OpenAI API with updated client
-            response = client.chat.completions.create(
+            # Call OpenAI API with instance client
+            response = self.client.chat.completions.create(
                 model=model,
                 messages=messages,
                 temperature=0.1,

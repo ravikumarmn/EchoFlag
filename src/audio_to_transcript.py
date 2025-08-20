@@ -28,7 +28,7 @@ class AudioToTranscript:
             os.makedirs(output_dir)
         
         # Initialize OpenAI client
-        self.client = OpenAI()
+        self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
     
     def transcribe_audio(self, audio_file):
         """
