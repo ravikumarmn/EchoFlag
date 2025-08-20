@@ -61,14 +61,13 @@ class AudioToViolations:
         self.user_instructions = (
             "Tasks:\n"
             "1) Read the paragraph.\n"
-            "2) Split into sentences using normal English punctuation (. ? !)\n"
-            "3) Detect all possible violations with categories:\n"
+            "2) Detect all possible violations with categories:\n"
             "   - RED: illegal/fraud/scam/guarantees of returns, threats of legal action, criminal suggestions\n"
             "   - ORANGE: risk-free/no risk/false urgency/double your money\n"
             "   - YELLOW: best/perfect/high return/exclusive offer/etc.\n"
-            "4) For each violation, provide the EXACT span indices in the full paragraph string: char_start and char_end (end exclusive).\n"
-            "5) Also provide sentence_index_start and sentence_index_end that bound the violation.\n"
-            "6) Output strict JSON only."
+            "3) For each violation, provide the EXACT span indices in the full paragraph string: char_start and char_end (end exclusive).\n"
+            "4) Also provide sentence_index_start and sentence_index_end that bound the violation.\n"
+            "5) Output strict JSON only."
         )
     
     def convert_to_wav(self, in_file: str) -> str:
