@@ -6,7 +6,17 @@ This script takes an audio file and generates a transcript.
 import os
 import json
 import argparse
-import speech_recognition as sr
+import warnings
+
+# Suppress deprecation warnings for aifc module
+warnings.filterwarnings("ignore", category=DeprecationWarning, module="aifc")
+
+try:
+    import speech_recognition as sr
+except ImportError as e:
+    print(f"Warning: SpeechRecognition import failed: {e}")
+    sr = None
+
 from pydub import AudioSegment
 import tempfile
 from datetime import datetime

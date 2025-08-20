@@ -1,7 +1,14 @@
 #!/usr/bin/env python3
 # Audio processing compatibility fixes
 import warnings
-warnings.filterwarnings("ignore", category=DeprecationWarning)
+warnings.filterwarnings("ignore", category=DeprecationWarning, module="aifc")
+
+# Handle SpeechRecognition import with aifc compatibility
+try:
+    import speech_recognition as sr
+except ImportError as e:
+    print(f"Warning: SpeechRecognition import failed: {e}")
+    sr = None
 
 """
 Audio to Violations Analyzer for EchoFlag
