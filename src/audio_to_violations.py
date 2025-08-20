@@ -461,13 +461,14 @@ class AudioToViolations:
         ]
         
         try:
-            # Call OpenAI API with instance client
+            # Call OpenAI API with instance client with timeout
             print(f"Calling OpenAI API with model: {model}")
             response = self.client.chat.completions.create(
                 model=model,
                 messages=messages,
                 temperature=0.1,
-                max_tokens=2000
+                max_tokens=2000,
+                timeout=60  # 60 second timeout
             )
             
             # Extract response content
@@ -674,35 +675,34 @@ class AudioToViolations:
         
         Args:
             audio_file (str): Path to audio file
-            model (str): LLM model to use
             use_google (bool): Whether to use Google Speech with diarization
+            model (str): LLM model to use
             
         Returns:
             dict: Complete analysis results
         """
-        print(f"Processing audio file: {audio_file}")
+        # Step 1: Transcribe audio
+        print("Step 1: Transcribing audio...")
+        try:
+            transcription_result = self.transcribe_audio(audio_file, use_google)
+            print(f"Transcription result type: {type(transcription_result)}")
+            print(f"Transcription result: {str(transcription_result)[:200]}...")
+        except Exception as e:
+            print(f"Transcription failed: {e}")
+            return {"error": f"Transcription failed: {str(e)}"}
         
-        # Step 1: Transcribe audio with speaker diarization
-        transcription_result = self.transcribe_audio(audio_file, use_google=use_google)
-        
-        # Handle different transcription formats
-        if use_google and self.google_available and isinstance(transcription_result, dict):
-            if "error" in transcription_result:
-                return {"error": transcription_result["error"]}
-            
-            # Use the speaker-separated transcript
-            transcript = transcription_result.get("transcript", {})
-            if not transcript:
-                # Fallback to full text if no speakers detected
-                full_text = transcription_result.get("full_text", "")
-                transcript = {"Unknown_Speaker": full_text}
-        else:
-            # Whisper or simple text result
-            if isinstance(transcription_result, str):
-                # Apply speaker detection to plain text
-                transcript = self._detect_speakers_from_text(transcription_result)
-            elif isinstance(transcription_result, dict) and "transcript" in transcription_result:
+        # Handle different transcription result formats
+        if isinstance(transcription_result, dict):
+            if "transcript" in transcription_result:
                 transcript = transcription_result["transcript"]
+            else:
+                # Assume it's already a speaker-segmented transcript
+                transcript = transcription_result
+        else:
+            # String result - convert to speaker format
+            if use_google:
+                # This shouldn't happen with Google Speech, but fallback
+                transcript = {"Speaker_1": str(transcription_result)}
             else:
                 transcript = {"Speaker_1": str(transcription_result)}
         
