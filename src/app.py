@@ -151,60 +151,20 @@ if analyze_clicked and uploaded is not None and AudioToViolations is not None:
         progress_bar.progress(20)
         status_text.text("Transcribing audio...")
         
-        # Use threading with proper timeout handling
-        import threading
-        import queue
-        import time
-        
-        result_queue = queue.Queue()
-        
-        def run_analysis_thread():
-            try:
-                result = processor.process_and_analyze(temp_path, use_google=use_google_speech, model=model)
-                result_queue.put(("success", result))
-            except Exception as e:
-                result_queue.put(("error", str(e)))
-        
-        # Start analysis in background thread
-        thread = threading.Thread(target=run_analysis_thread)
-        thread.daemon = True
-        thread.start()
-        
-        # Progress tracking with timeout
-        max_wait_time = 45  # 45 seconds max
-        start_time = time.time()
-        
-        while thread.is_alive() and (time.time() - start_time) < max_wait_time:
-            elapsed = time.time() - start_time
-            progress = min(40 + int((elapsed / max_wait_time) * 50), 90)
-            progress_bar.progress(progress)
-            status_text.text(f"Running violation analysis... ({int(elapsed)}s)")
-            time.sleep(1)
-        
-        # Check results
         try:
-            if not result_queue.empty():
-                result_type, result_data = result_queue.get_nowait()
-                
-                progress_bar.progress(100)
-                status_text.text("Analysis complete!")
-                
-                if result_type == "error":
-                    st.error(f"Analysis failed: {result_data}")
-                else:
-                    st.success("Analysis complete")
-                    st.download_button(
-                        "Download Analysis JSON",
-                        data=json.dumps(result_data, indent=2).encode("utf-8"),
-                        file_name=f"analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
-                        mime="application/json",
-                    )
-                    st.json(result_data)
-            else:
-                st.error("Analysis timed out after 45 seconds. Try with a shorter audio file or check your internet connection.")
-                
-        except Exception as e:
-            st.error(f"Analysis failed: {e}")
+            result = processor.process_and_analyze(temp_path, use_google=use_google_speech, model=model)
+            progress_bar.progress(100)
+            status_text.text("Analysis complete!")
+            st.success("Analysis complete")
+            st.download_button(
+                "Download Analysis JSON",
+                data=json.dumps(result, indent=2).encode("utf-8"),
+                file_name=f"analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+                mime="application/json",
+            )
+            st.json(result)
+        except Exception as analysis_error:
+            st.error(f"Analysis failed: {analysis_error}")
             import traceback
             with st.expander("Debug Details"):
                 st.text(traceback.format_exc())
