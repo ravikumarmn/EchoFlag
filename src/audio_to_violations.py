@@ -18,8 +18,20 @@ from typing import Dict, Any, List, Tuple, Optional
 import tempfile
 
 from openai import OpenAI
-from google.cloud import speech
-from pydub import AudioSegment
+try:
+    from google.cloud import speech
+    GOOGLE_SPEECH_AVAILABLE = True
+except ImportError:
+    GOOGLE_SPEECH_AVAILABLE = False
+    print("Google Cloud Speech not available - using OpenAI Whisper only")
+
+try:
+    from pydub import AudioSegment
+    PYDUB_AVAILABLE = True
+except ImportError:
+    PYDUB_AVAILABLE = False
+    print("pydub not available - audio conversion disabled")
+
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -52,18 +64,21 @@ class AudioToViolations:
         # Initialize Google Cloud Speech client with error handling
         self.speech_client = None
         self.google_available = False
-        try:
-            # Check if running in Streamlit Cloud environment
-            if os.getenv("STREAMLIT_CLOUD"):
-                print("Running in Streamlit Cloud - Google Cloud Speech disabled")
-                self.google_available = False
-            else:
-                self.speech_client = speech.SpeechClient()
-                self.google_available = True
-                print("Google Cloud Speech initialized successfully")
-        except Exception as e:
-            print(f"Warning: Google Cloud Speech not available: {e}")
-            print("Falling back to OpenAI Whisper for transcription")
+        if GOOGLE_SPEECH_AVAILABLE:
+            try:
+                # Check if running in Streamlit Cloud environment
+                if os.getenv("STREAMLIT_CLOUD"):
+                    print("Running in Streamlit Cloud - Google Cloud Speech disabled")
+                    self.google_available = False
+                else:
+                    self.speech_client = speech.SpeechClient()
+                    self.google_available = True
+                    print("Google Cloud Speech initialized successfully")
+            except Exception as e:
+                print(f"Warning: Google Cloud Speech not available: {e}")
+                print("Falling back to OpenAI Whisper for transcription")
+        else:
+            print("Google Cloud Speech library not installed - using OpenAI Whisper only")
         
         # Custom prompts for LLM
         self.system_prompt = (
@@ -99,25 +114,34 @@ class AudioToViolations:
             in_file: Path to input audio file (mp3/mp4/wav/..)
 
         Returns:
-            Path to temporary WAV file
+            Path to temporary WAV file (or original file if conversion fails)
         """
-        temp_wav = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
-        temp_wav_path = temp_wav.name
-        temp_wav.close()
+        if not PYDUB_AVAILABLE:
+            print("Warning: pydub not available, using original file")
+            return in_file
+            
+        try:
+            temp_wav = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+            temp_wav_path = temp_wav.name
+            temp_wav.close()
 
-        # Load audio and convert to mono 16kHz for optimal diarization
-        audio = AudioSegment.from_file(in_file)
-        
-        # Convert to mono (required for speaker diarization)
-        audio = audio.set_channels(1)
-        
-        # Set sample rate to 16kHz (optimal for Google Speech)
-        audio = audio.set_frame_rate(16000)
-        
-        # Export as 16-bit PCM WAV
-        audio.export(temp_wav_path, format="wav", parameters=["-acodec", "pcm_s16le"])
-
-        return temp_wav_path
+            # Load audio and convert to mono 16kHz for optimal diarization
+            audio = AudioSegment.from_file(in_file)
+            
+            # Convert to mono (required for speaker diarization)
+            audio = audio.set_channels(1)
+            
+            # Set sample rate to 16kHz (optimal for Google Speech)
+            audio = audio.set_frame_rate(16000)
+            
+            # Export as WAV
+            audio.export(temp_wav_path, format="wav")
+            
+            return temp_wav_path
+        except Exception as e:
+            print(f"Warning: Audio conversion failed: {e}")
+            print("Using original file")
+            return in_file
     
     def transcribe_audio(self, audio_file, use_google=True):
         """
