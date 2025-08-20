@@ -1,4 +1,11 @@
 #!/usr/bin/env python3
+# Apply pydub patch first before any imports
+try:
+    from pydub_patch import apply_patches
+    apply_patches()
+except ImportError:
+    pass
+
 """
 Generate a Salesperson vs Client conversation with explicit mutual fund distribution violations
 using an LLM, convert to audio per turn, and export a single combined .mp4 (audio-only).

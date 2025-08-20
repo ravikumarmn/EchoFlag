@@ -1,4 +1,11 @@
 #!/usr/bin/env python3
+# Apply pydub patch first before any imports
+try:
+    from pydub_patch import apply_patches
+    apply_patches()
+except ImportError:
+    pass
+
 """
 Audio to Violations Analyzer for EchoFlag
 
