@@ -20,33 +20,34 @@ from pydub import AudioSegment
 from dotenv import load_dotenv
 
 # Load environment variables
-load_dotenv(dotenv_path=".env")
+load_dotenv()
 
 # Configure OpenAI client
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
+
 class AudioToViolations:
     """Process audio files to detect compliance violations with span identification."""
-    
+
     def __init__(self, output_dir="violations_output"):
         """
         Initialize the audio to violations analyzer.
-        
+
         Args:
             output_dir (str): Directory to save generated analysis files
         """
         self.output_dir = output_dir
         self.transcripts_dir = os.path.join(output_dir, "transcripts")
         self.analysis_dir = os.path.join(output_dir, "analysis")
-        
+
         # Create output directories if they don't exist
         for directory in [self.output_dir, self.transcripts_dir, self.analysis_dir]:
             if not os.path.exists(directory):
                 os.makedirs(directory)
-        
+
         # Initialize recognizer
         self.recognizer = sr.Recognizer()
-        
+
         # Custom prompts for LLM
         self.system_prompt = (
             "You are EchoFlag AI, an expert compliance analyst for financial conversations. "
@@ -57,7 +58,7 @@ class AudioToViolations:
             "Respond ONLY as strict JSON with keys: violations (array), summary (string), overall_risk (RED|ORANGE|YELLOW|NONE). "
             "Each violation object MUST have: severity, speaker, text, sentence_index_start, sentence_index_end, char_start, char_end, explanation."
         )
-        
+
         self.user_instructions = (
             "Tasks:\n"
             "1) Read the paragraph.\n"
@@ -70,14 +71,14 @@ class AudioToViolations:
             "5) Also provide sentence_index_start and sentence_index_end that bound the violation.\n"
             "6) Output strict JSON only."
         )
-    
+
     def convert_mp3_to_wav(self, mp3_file):
         """
         Convert MP3 file to WAV format for speech recognition.
-        
+
         Args:
             mp3_file (str): Path to MP3 file
-            
+
         Returns:
             str: Path to temporary WAV file
         """
@@ -85,39 +86,39 @@ class AudioToViolations:
         temp_wav = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
         temp_wav_path = temp_wav.name
         temp_wav.close()
-        
+
         # Convert MP3 to WAV
         audio = AudioSegment.from_mp3(mp3_file)
         audio.export(temp_wav_path, format="wav")
-        
+
         return temp_wav_path
-    
+
     def transcribe_audio(self, audio_file, use_google=True):
         """
         Transcribe audio file to text.
-        
+
         Args:
             audio_file (str): Path to audio file
             use_google (bool): Whether to use Google Web Speech API
-            
+
         Returns:
             str: Transcribed text
         """
         # Check if file is MP3 and convert if needed
-        if audio_file.lower().endswith('.mp3'):
+        if audio_file.lower().endswith(".mp3"):
             wav_file = self.convert_mp3_to_wav(audio_file)
             is_temp = True
         else:
             wav_file = audio_file
             is_temp = False
-        
+
         try:
             # Load audio file
             with sr.AudioFile(wav_file) as source:
                 # Adjust for ambient noise and record
                 self.recognizer.adjust_for_ambient_noise(source)
                 audio_data = self.recognizer.record(source)
-                
+
                 # Transcribe audio
                 if use_google:
                     # Use Google Web Speech API (requires internet)
@@ -132,7 +133,7 @@ class AudioToViolations:
                             "Enable 'Use Google Web Speech' in the sidebar or install pocketsphinx locally. "
                             f"Error: {e}"
                         )
-                
+
                 return text
         except sr.UnknownValueError:
             return "Speech Recognition could not understand audio"
@@ -144,72 +145,74 @@ class AudioToViolations:
             # Clean up temporary file if created
             if is_temp and os.path.exists(wav_file):
                 os.remove(wav_file)
-    
+
     def extract_speaker_from_filename(self, filename):
         """
         Extract speaker information from filename.
-        
+
         Args:
             filename (str): Audio filename
-            
+
         Returns:
             str: Speaker identifier or None
         """
         # Try to extract Speaker_X from filename
         basename = os.path.basename(filename)
-        parts = basename.split('_')
-        
+        parts = basename.split("_")
+
         for i, part in enumerate(parts):
-            if part.startswith('Speaker'):
+            if part.startswith("Speaker"):
                 return f"{part}"
-        
+
         return None
-    
+
     def process_audio_file(self, audio_file, use_google=True):
         """
         Process audio file and save transcript.
-        
+
         Args:
             audio_file (str): Path to audio file
             use_google (bool): Whether to use Google Web Speech API
-            
+
         Returns:
             dict: Transcript data and file path
         """
         print(f"Processing audio file: {audio_file}")
-        
+
         # Transcribe audio
         text = self.transcribe_audio(audio_file, use_google)
-        
+
         # Extract speaker information from filename
         speaker = self.extract_speaker_from_filename(audio_file)
         if not speaker:
             speaker = "Unknown_Speaker"
-        
+
         # Create transcript data
         transcript = {speaker: text}
-        
+
         # Generate output filename
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         basename = os.path.splitext(os.path.basename(audio_file))[0]
-        output_file = os.path.join(self.transcripts_dir, f"{basename}_transcript_{timestamp}.json")
-        
+        output_file = os.path.join(
+            self.transcripts_dir, f"{basename}_transcript_{timestamp}.json"
+        )
+
         # Save transcript
         with open(output_file, "w") as f:
             json.dump(transcript, f, indent=2)
-        
+
         print(f"Transcript saved to '{output_file}'")
-        
+
         return {"transcript": transcript, "file_path": output_file}
-    
+
     def split_sentences(self, text):
         """
         Naive sentence splitter returning list of (start, end) char spans for each sentence.
         Sentences are split on [.!?] keeping order; trims whitespace at boundaries.
-        
+
         Args:
             text (str): Text to split into sentences
-            
+
         Returns:
             list: List of (start, end) character spans for each sentence
         """
@@ -244,14 +247,14 @@ class AudioToViolations:
             if s < e:
                 spans.append((s, e))
         return spans
-    
+
     def format_transcript_for_analysis(self, transcript):
         """
         Format transcript for LLM analysis.
-        
+
         Args:
             transcript (dict): Transcript data with speaker labels
-            
+
         Returns:
             str: Formatted paragraph text
         """
@@ -261,35 +264,35 @@ class AudioToViolations:
             parts.append(f"{speaker}: {transcript[speaker].strip()}")
         paragraph = " \n".join(parts).strip()
         return paragraph
-    
+
     def analyze_with_llm(self, paragraph, model="gpt-4"):
         """
         Analyze paragraph for violations using LLM.
-        
+
         Args:
             paragraph (str): Paragraph text to analyze
             model (str): LLM model to use
-            
+
         Returns:
             dict: Analysis results
         """
         messages = [
             {"role": "system", "content": self.system_prompt},
-            {"role": "user", "content": self.user_instructions + "\nParagraph:\n" + paragraph},
+            {
+                "role": "user",
+                "content": self.user_instructions + "\nParagraph:\n" + paragraph,
+            },
         ]
-        
+
         try:
             # Call OpenAI API with updated client
             response = client.chat.completions.create(
-                model=model,
-                messages=messages,
-                temperature=0.1,
-                max_tokens=2000
+                model=model, messages=messages, temperature=0.1, max_tokens=2000
             )
-            
+
             # Extract response content
             content = response.choices[0].message.content
-            
+
             # Try to parse JSON from response
             try:
                 if "```" in content:
@@ -299,35 +302,51 @@ class AudioToViolations:
                         return json.loads(match.group(1))
                 return json.loads(content)
             except json.JSONDecodeError:
-                print("Warning: Could not parse LLM response as JSON. Returning raw text.")
+                print(
+                    "Warning: Could not parse LLM response as JSON. Returning raw text."
+                )
                 return {
                     "violations": [],
                     "summary": "LLM returned non-JSON response.",
                     "overall_risk": "NONE",
-                    "raw_response": content
+                    "raw_response": content,
                 }
-            
+
         except Exception as e:
             print(f"Error calling OpenAI API: {str(e)}")
             return {"error": str(e)}
-    
+
     def align_or_validate_spans(self, result, paragraph, sentence_spans):
         """
         Validate and, if needed, adjust LLM-provided spans to the paragraph.
-        
+
         Args:
             result (dict): LLM analysis results
             paragraph (str): Original paragraph text
             sentence_spans (list): List of sentence spans
-            
+
         Returns:
             dict: Validated analysis results
         """
         n = len(paragraph)
         for v in result.get("violations", []):
             # Clamp sentence indices
-            sis = max(0, min(len(sentence_spans) - 1, int(v.get("sentence_index_start", 0)))) if sentence_spans else 0
-            sie = max(0, min(len(sentence_spans) - 1, int(v.get("sentence_index_end", sis)))) if sentence_spans else 0
+            sis = (
+                max(
+                    0,
+                    min(len(sentence_spans) - 1, int(v.get("sentence_index_start", 0))),
+                )
+                if sentence_spans
+                else 0
+            )
+            sie = (
+                max(
+                    0,
+                    min(len(sentence_spans) - 1, int(v.get("sentence_index_end", sis))),
+                )
+                if sentence_spans
+                else 0
+            )
             if sie < sis:
                 sie = sis
             v["sentence_index_start"] = sis
@@ -359,19 +378,19 @@ class AudioToViolations:
             # Ensure required keys exist
             v.setdefault("explanation", "")
             v.setdefault("severity", "YELLOW")
-            
+
         return result
-    
+
     def build_output(self, audio_file, paragraph, result, sentence_spans):
         """
         Build final output with all required information.
-        
+
         Args:
             audio_file (str): Path to audio file
             paragraph (str): Paragraph text
             result (dict): LLM analysis results
             sentence_spans (list): List of sentence spans
-            
+
         Returns:
             dict: Complete output data
         """
@@ -387,114 +406,135 @@ class AudioToViolations:
             "overall_risk": result.get("overall_risk", "NONE"),
         }
         return out
-    
+
     def process_and_analyze(self, audio_file, use_google=True, model="gpt-4"):
         """
         Process audio file and analyze for violations.
-        
+
         Args:
             audio_file (str): Path to audio file
             use_google (bool): Whether to use Google Web Speech API
             model (str): LLM model to use
-            
+
         Returns:
             dict: Complete analysis results
         """
         # Step 1: Transcribe audio
         transcript_result = self.process_audio_file(audio_file, use_google)
         transcript = transcript_result["transcript"]
-        
+
         # Step 2: Format transcript for analysis
         paragraph = self.format_transcript_for_analysis(transcript)
-        
+
         # Step 3: Split sentences
         sentence_spans = self.split_sentences(paragraph)
-        
+
         # Step 4: Analyze with LLM
         analysis = self.analyze_with_llm(paragraph, model)
-        
+
         # Step 5: Validate spans
-        validated_analysis = self.align_or_validate_spans(analysis, paragraph, sentence_spans)
-        
+        validated_analysis = self.align_or_validate_spans(
+            analysis, paragraph, sentence_spans
+        )
+
         # Step 6: Build output
-        output = self.build_output(audio_file, paragraph, validated_analysis, sentence_spans)
-        
+        output = self.build_output(
+            audio_file, paragraph, validated_analysis, sentence_spans
+        )
+
         # Step 7: Save analysis
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         basename = os.path.splitext(os.path.basename(audio_file))[0]
-        output_file = os.path.join(self.analysis_dir, f"{basename}_analysis_{timestamp}.json")
-        
+        output_file = os.path.join(
+            self.analysis_dir, f"{basename}_analysis_{timestamp}.json"
+        )
+
         with open(output_file, "w") as f:
             json.dump(output, f, indent=2)
-        
+
         print(f"Analysis saved to '{output_file}'")
-        
+
         return output
+
 
 def main():
     """Main function to process audio and analyze for violations."""
-    parser = argparse.ArgumentParser(description="Process audio and analyze for violations")
+    parser = argparse.ArgumentParser(
+        description="Process audio and analyze for violations"
+    )
     parser.add_argument("--audio_file", help="Path to audio file")
-    parser.add_argument("--output-dir", default="violations_output", help="Directory to save output files")
-    parser.add_argument("--use-google", action="store_true", default=True, help="Use Google Web Speech API (requires internet)")
+    parser.add_argument(
+        "--output-dir",
+        default="violations_output",
+        help="Directory to save output files",
+    )
+    parser.add_argument(
+        "--use-google",
+        action="store_true",
+        default=True,
+        help="Use Google Web Speech API (requires internet)",
+    )
     parser.add_argument("--model", default="gpt-4", help="LLM model to use")
-    
+
     args = parser.parse_args()
-    
+
     if not os.path.exists(args.audio_file):
         print(f"Error: File '{args.audio_file}' not found.")
         return 1
-    
+
     # Check if OpenAI API key is set
     if not os.getenv("OPENAI_API_KEY"):
         print("Error: OPENAI_API_KEY environment variable not set.")
         print("Please set it in your .env file or environment.")
         return 1
-    
+
     # Create processor
     processor = AudioToViolations(args.output_dir)
-    
+
     # Process and analyze
     output = processor.process_and_analyze(args.audio_file, args.use_google, args.model)
-    
+
     # Print summary
     print("\nAnalysis Summary:")
     print("-" * 80)
-    
+
     if "error" in output:
         print(f"Error: {output['error']}")
         return 1
-    
+
     print(f"Audio file: {output['audio_file_name']}")
     print(f"Overall risk: {output['overall_risk']}")
     print(f"Summary: {output['summary']}")
-    
+
     if output["violations"]:
         print(f"\nFound {len(output['violations'])} violations:")
-        
+
         # Group by severity
         by_severity = {"RED": [], "ORANGE": [], "YELLOW": []}
         for violation in output["violations"]:
             severity = violation.get("severity", "UNKNOWN")
             if severity in by_severity:
                 by_severity[severity].append(violation)
-        
+
         # Print by severity
         for severity in ["RED", "ORANGE", "YELLOW"]:
             if by_severity[severity]:
                 print(f"\n{severity} Violations ({len(by_severity[severity])}):")
                 for i, v in enumerate(by_severity[severity], 1):
                     print(f"  {i}. {v['speaker']}: \"{v['text']}\"")
-                    print(f"     Sentence: {v['sentence_index_start']}-{v['sentence_index_end']}, " +
-                          f"Chars: {v['char_start']}-{v['char_end']}")
+                    print(
+                        f"     Sentence: {v['sentence_index_start']}-{v['sentence_index_end']}, "
+                        + f"Chars: {v['char_start']}-{v['char_end']}"
+                    )
                     print(f"     Explanation: {v['explanation']}")
     else:
         print("\nNo violations found.")
-    
+
     print("-" * 80)
     print("\nProcessing complete.")
-    
+
     return 0
+
 
 if __name__ == "__main__":
     exit(main())
