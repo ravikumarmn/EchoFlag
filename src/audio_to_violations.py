@@ -346,10 +346,10 @@ class AudioToViolations:
         out = {
             "audio_file_name": os.path.basename(audio_file),
             "paragraph": paragraph,
-            "sentences": [
-                {"index": i, "char_start": s, "char_end": e, "text": paragraph[s:e]}
-                for i, (s, e) in enumerate(sentence_spans)
-            ],
+            # "sentences": [
+            #     {"index": i, "char_start": s, "char_end": e, "text": paragraph[s:e]}
+            #     for i, (s, e) in enumerate(sentence_spans)
+            # ],
             "violations": result.get("violations", []),
             "summary": result.get("summary", ""),
             "overall_risk": result.get("overall_risk", "NONE"),
