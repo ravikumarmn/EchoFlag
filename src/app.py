@@ -25,11 +25,7 @@ st.caption("Upload audio and run local transcription + LLM analysis. No HTTP cal
 with st.sidebar:
     st.header("Settings")
     model = st.selectbox("LLM Model (analysis)", ["gpt-4"], index=0)
-    use_google = st.toggle(
-        "Use Google Web Speech (transcription)",
-        value=True,
-        help="If off, uses offline Sphinx (needs pocketsphinx installed)."
-    )
+    st.info("🎙️ **Transcription**: OpenAI Whisper\n📊 **Analysis**: OpenAI GPT-4")
 
 # Configuration using st.secrets (for Streamlit Cloud deployment)
 try:
@@ -108,9 +104,9 @@ if transcribe_clicked and uploaded is not None and AudioToViolations is not None
     temp_path = None
     try:
         temp_path = _save_to_temp(uploaded)
-        st.info("Transcribing…")
+        st.info("Transcribing with OpenAI Whisper…")
         processor = _make_processor()
-        res = processor.process_audio_file(temp_path, use_google=use_google)
+        res = processor.process_audio_file(temp_path)
         st.success("Transcription complete")
         st.json(res)
     except Exception as e:
@@ -126,9 +122,9 @@ if analyze_clicked and uploaded is not None and AudioToViolations is not None:
     temp_path = None
     try:
         temp_path = _save_to_temp(uploaded)
-        st.info("Analyzing…")
+        st.info("Analyzing with OpenAI Whisper + GPT-4…")
         processor = _make_processor()
-        res = processor.process_and_analyze(temp_path, use_google=use_google, model=model)
+        res = processor.process_and_analyze(temp_path, model=model)
         st.success("Analysis complete")
         st.download_button(
             "Download Analysis JSON",

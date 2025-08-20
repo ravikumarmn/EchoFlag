@@ -1,7 +1,1 @@
 ffmpeg
-python3-dev
-portaudio19-dev
-libsndfile1
-libpython3-dev
-python3-pyaudio
-python3-numpy

@@ -1,14 +1,6 @@
 #!/usr/bin/env python3
-# Audio processing compatibility fixes
-import warnings
-warnings.filterwarnings("ignore", category=DeprecationWarning, module="aifc")
-
-# Handle SpeechRecognition import with aifc compatibility
-try:
-    import speech_recognition as sr
-except ImportError as e:
-    print(f"Warning: SpeechRecognition import failed: {e}")
-    sr = None
+# Audio processing with OpenAI Whisper
+from openai import OpenAI
 
 """
 Audio to Violations Analyzer for EchoFlag
@@ -25,7 +17,6 @@ from typing import Dict, Any, List, Tuple, Optional
 import tempfile
 
 from openai import OpenAI
-import speech_recognition as sr
 from pydub import AudioSegment
 from dotenv import load_dotenv
 
@@ -54,8 +45,8 @@ class AudioToViolations:
             if not os.path.exists(directory):
                 os.makedirs(directory)
         
-        # Initialize recognizer
-        self.recognizer = sr.Recognizer()
+        # Initialize OpenAI client
+        self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
         
         # Custom prompts for LLM
         self.system_prompt = (
@@ -104,61 +95,25 @@ class AudioToViolations:
     
     def transcribe_audio(self, audio_file, use_google=True):
         """
-        Transcribe audio file to text.
+        Transcribe audio file to text using OpenAI Whisper.
         
         Args:
             audio_file (str): Path to audio file
-            use_google (bool): Whether to use Google Web Speech API
+            use_google (bool): Ignored, kept for compatibility
             
         Returns:
             str: Transcribed text
         """
-        # Convert anything that's not wav to wav for SpeechRecognition
-        ext = os.path.splitext(audio_file)[1].lower()
-        if ext != '.wav':
-            wav_file = self.convert_to_wav(audio_file)
-            is_temp = True
-        else:
-            wav_file = audio_file
-            is_temp = False
-        
         try:
-            # Load audio file
-            with sr.AudioFile(wav_file) as source:
-                # Adjust for ambient noise and record
-                self.recognizer.adjust_for_ambient_noise(source)
-                audio_data = self.recognizer.record(source)
-                
-                # Transcribe audio
-                if use_google:
-                    # Use Google Web Speech API (requires internet)
-                    text = self.recognizer.recognize_google(audio_data)
-                else:
-                    # Use Sphinx (offline, but less accurate)
-                    try:
-                        text = self.recognizer.recognize_sphinx(audio_data)
-                    except Exception as e:
-                        return (
-                            "Offline transcription requires pocketsphinx. "
-                            "Enable 'Use Google Web Speech' in the sidebar or install pocketsphinx locally. "
-                            f"Error: {e}"
-                        )
-                
-                return text
-        except sr.UnknownValueError:
-            return "Speech Recognition could not understand audio"
-        except sr.RequestError as e:
-            return f"Could not request results; {e}"
+            # Open audio file and transcribe with Whisper
+            with open(audio_file, "rb") as audio:
+                transcript = self.client.audio.transcriptions.create(
+                    model="whisper-1",
+                    file=audio
+                )
+            return transcript.text
         except Exception as e:
-            return (
-                "Transcription failed: "
-                + str(e)
-                + "; ensure the file is a valid audio and ffmpeg is installed."
-            )
-        finally:
-            # Clean up temporary file if created
-            if is_temp and os.path.exists(wav_file):
-                os.remove(wav_file)
+            return f"Transcription failed: {e}"
     
     def extract_speaker_from_filename(self, filename):
         """
@@ -403,21 +358,22 @@ class AudioToViolations:
         }
         return out
     
-    def process_and_analyze(self, audio_file, use_google=True, model="gpt-4"):
+    def process_and_analyze(self, audio_file, model="gpt-4"):
         """
-        Process audio file and analyze for violations.
+        Process audio file and analyze for violations using OpenAI Whisper + GPT.
         
         Args:
             audio_file (str): Path to audio file
-            use_google (bool): Whether to use Google Web Speech API
             model (str): LLM model to use
             
         Returns:
             dict: Complete analysis results
         """
-        # Step 1: Transcribe audio
-        transcript_result = self.process_audio_file(audio_file, use_google)
-        transcript = transcript_result["transcript"]
+        print(f"Processing audio file: {audio_file}")
+        
+        # Transcribe audio
+        text = self.transcribe_audio(audio_file)
+        transcript = {"transcript": text}
         
         # Step 2: Format transcript for analysis
         paragraph = self.format_transcript_for_analysis(transcript)

@@ -7,6 +7,3 @@ python-multipart==0.0.9
 openai==1.37.0
 python-dotenv==1.0.0
 pydub==0.25.1
-SpeechRecognition==3.10.4
-pyaudio
-audioop-lts>=0.2.1
