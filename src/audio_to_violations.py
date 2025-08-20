@@ -53,8 +53,14 @@ class AudioToViolations:
         self.speech_client = None
         self.google_available = False
         try:
-            self.speech_client = speech.SpeechClient()
-            self.google_available = True
+            # Check if running in Streamlit Cloud environment
+            if os.getenv("STREAMLIT_CLOUD"):
+                print("Running in Streamlit Cloud - Google Cloud Speech disabled")
+                self.google_available = False
+            else:
+                self.speech_client = speech.SpeechClient()
+                self.google_available = True
+                print("Google Cloud Speech initialized successfully")
         except Exception as e:
             print(f"Warning: Google Cloud Speech not available: {e}")
             print("Falling back to OpenAI Whisper for transcription")
