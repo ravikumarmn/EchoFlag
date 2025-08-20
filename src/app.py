@@ -31,16 +31,24 @@ with st.sidebar:
         help="If off, uses offline Sphinx (needs pocketsphinx installed)."
     )
 
-# Environment-only configuration (no st.secrets)
-openai_key_env = os.getenv("OPENAI_API_KEY")
-if not openai_key_env:
-    st.warning(
-        "OPENAI_API_KEY not found in environment. Set it before running, or add it to a .env file.\n"
-        "Examples:\n"
-        "  export OPENAI_API_KEY=sk-...  # macOS/Linux\n"
-        "  setx OPENAI_API_KEY sk-...    # Windows (new shell)\n"
-        "Or create a .env file with: OPENAI_API_KEY=sk-..."
-    )
+# Configuration using st.secrets (for Streamlit Cloud deployment)
+try:
+    openai_key = st.secrets["OPENAI_API_KEY"]
+    # Set environment variable for the analyzer module
+    os.environ["OPENAI_API_KEY"] = openai_key
+except KeyError:
+    # Fallback to environment variable for local development
+    openai_key = os.getenv("OPENAI_API_KEY")
+    if not openai_key:
+        st.warning(
+            "OPENAI_API_KEY not found in st.secrets or environment.\n"
+            "For Streamlit Cloud: Add OPENAI_API_KEY to your app's secrets.\n"
+            "For local development: Set it in environment or .env file.\n"
+            "Examples:\n"
+            "  export OPENAI_API_KEY=sk-...  # macOS/Linux\n"
+            "  setx OPENAI_API_KEY sk-...    # Windows (new shell)\n"
+            "Or create a .env file with: OPENAI_API_KEY=sk-..."
+        )
 
 # Import analyzer; it loads .env internally and reads OPENAI_API_KEY from env
 try:
