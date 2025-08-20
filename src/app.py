@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import streamlit as st
 from dotenv import load_dotenv
+
 load_dotenv()
 # Must be the first Streamlit command on the page
 st.set_page_config(page_title="EchoFlag - Audio Violations", layout="centered")
@@ -49,6 +50,7 @@ except KeyError:
 # Import analyzer; it loads .env internally and reads OPENAI_API_KEY from env
 import sys
 import os
+
 # Add the parent directory to sys.path to ensure imports work
 current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(current_dir)
@@ -68,18 +70,24 @@ except Exception:
 
 st.subheader("1) Upload an audio file")
 uploaded = st.file_uploader(
-    "Choose an audio file (mp3/mp4/wav)",
-    type=["mp3", "mp4", "wav"]
+    "Choose an audio file (mp3/mp4/wav)", type=["mp3", "mp4", "wav"]
 )
 
 col1, col2 = st.columns(2)
 with col1:
-    transcribe_clicked = st.button("Transcribe Only", disabled=uploaded is None or AudioToViolations is None)
+    transcribe_clicked = st.button(
+        "Transcribe Only", disabled=uploaded is None or AudioToViolations is None
+    )
 with col2:
-    analyze_clicked = st.button("Analyze Violations", type="primary", disabled=uploaded is None or AudioToViolations is None)
+    analyze_clicked = st.button(
+        "Analyze Violations",
+        type="primary",
+        disabled=uploaded is None or AudioToViolations is None,
+    )
 
 if uploaded is not None:
     st.audio(uploaded)
+
 
 def _save_to_temp(uploaded_file) -> str:
     suffix_map = {
@@ -96,8 +104,12 @@ def _save_to_temp(uploaded_file) -> str:
         f.write(uploaded_file.getvalue())
     return path
 
+
 def _make_processor():
-    return AudioToViolations(output_dir="violations_output") if AudioToViolations else None
+    return (
+        AudioToViolations(output_dir="violations_output") if AudioToViolations else None
+    )
+
 
 if transcribe_clicked and uploaded is not None and AudioToViolations is not None:
     temp_path = None
