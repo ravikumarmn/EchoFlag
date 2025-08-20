@@ -18,7 +18,18 @@ st.caption("Upload audio and run local transcription + LLM analysis. No HTTP cal
 with st.sidebar:
     st.header("Settings")
     model = st.selectbox("LLM Model (analysis)", ["gpt-4"], index=0)
-    st.info("🎙️ **Transcription**: OpenAI Whisper\n📊 **Analysis**: OpenAI GPT-4")
+    
+    # Speaker diarization toggle
+    use_google_speech = st.checkbox(
+        "Enable Speaker Diarization", 
+        value=True,
+        help="Use Google Cloud Speech-to-Text for speaker identification"
+    )
+    
+    if use_google_speech:
+        st.info("🎙️ **Transcription**: Google Cloud Speech (with speakers)\n📊 **Analysis**: OpenAI GPT-4")
+    else:
+        st.info("🎙️ **Transcription**: OpenAI Whisper\n📊 **Analysis**: OpenAI GPT-4")
 
 # Configuration using st.secrets (for Streamlit Cloud deployment)
 try:
@@ -125,9 +136,12 @@ if analyze_clicked and uploaded is not None and AudioToViolations is not None:
     temp_path = None
     try:
         temp_path = _save_to_temp(uploaded)
-        st.info("Analyzing with OpenAI Whisper + GPT-4…")
+        if use_google_speech:
+            st.info("Analyzing with Google Cloud Speech + GPT-4…")
+        else:
+            st.info("Analyzing with OpenAI Whisper + GPT-4…")
         processor = _make_processor()
-        res = processor.process_and_analyze(temp_path, model=model)
+        res = processor.process_and_analyze(temp_path, model=model, use_google=use_google_speech)
         st.success("Analysis complete")
         st.download_button(
             "Download Analysis JSON",
