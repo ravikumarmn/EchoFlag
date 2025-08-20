@@ -56,13 +56,12 @@ if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 
 try:
-    # When running via `streamlit run src/app.py`, Python often adds the script
-    # directory (src/) to sys.path, so the module is `audio_to_violations`.
-    from audio_to_violations import AudioToViolations
+    # Import from src package first (most reliable)
+    from src.audio_to_violations import AudioToViolations
 except Exception:
     try:
-        # Fallback if project root is on sys.path and `src` is a package
-        from src.audio_to_violations import AudioToViolations
+        # Fallback for when running from src directory
+        from audio_to_violations import AudioToViolations
     except Exception as e:
         st.error(f"Failed to load analyzer: {e}")
         AudioToViolations = None
