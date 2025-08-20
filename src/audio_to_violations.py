@@ -462,6 +462,7 @@ class AudioToViolations:
         
         try:
             # Call OpenAI API with instance client
+            print(f"Calling OpenAI API with model: {model}")
             response = self.client.chat.completions.create(
                 model=model,
                 messages=messages,
@@ -471,6 +472,7 @@ class AudioToViolations:
             
             # Extract response content
             content = response.choices[0].message.content
+            print(f"OpenAI response: {content}")
             
             # Try to parse JSON from response
             try:
@@ -478,10 +480,15 @@ class AudioToViolations:
                     # Try fenced JSON first
                     match = re.search(r"```json\s*(\{[\s\S]*?\})\s*```", content)
                     if match:
-                        return json.loads(match.group(1))
-                return json.loads(content)
-            except json.JSONDecodeError:
-                print("Warning: Could not parse LLM response as JSON. Returning raw text.")
+                        result = json.loads(match.group(1))
+                        print(f"Parsed JSON from fenced block: {result}")
+                        return result
+                result = json.loads(content)
+                print(f"Parsed JSON directly: {result}")
+                return result
+            except json.JSONDecodeError as je:
+                print(f"JSON decode error: {je}")
+                print(f"Raw content: {content}")
                 return {
                     "violations": [],
                     "summary": "LLM returned non-JSON response.",
@@ -661,7 +668,7 @@ class AudioToViolations:
         }
         return out
     
-    def process_and_analyze(self, audio_file, model="gpt-4", use_google=True):
+    def process_and_analyze(self, audio_file, use_google=True, model="gpt-4"):
         """
         Process audio file and analyze for violations using Google Speech + GPT.
         
@@ -706,7 +713,9 @@ class AudioToViolations:
         sentence_spans = self.split_sentences(paragraph)
         
         # Step 4: Analyze with LLM
+        print(f"Analyzing paragraph: {paragraph[:200]}...")
         analysis = self.analyze_with_llm(paragraph, model)
+        print(f"LLM analysis result: {analysis}")
         
         # Step 5: Validate spans
         validated_analysis = self.align_or_validate_spans(analysis, paragraph, sentence_spans, transcript)

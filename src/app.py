@@ -141,7 +141,7 @@ if analyze_clicked and uploaded is not None and AudioToViolations is not None:
         else:
             st.info("Analyzing with OpenAI Whisper + GPT-4…")
         processor = _make_processor()
-        res = processor.process_and_analyze(temp_path, model=model, use_google=use_google_speech)
+        res = processor.process_and_analyze(temp_path, use_google=use_google_speech, model=model)
         st.success("Analysis complete")
         st.download_button(
             "Download Analysis JSON",
