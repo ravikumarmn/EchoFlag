@@ -6,15 +6,7 @@ load_dotenv()
 # Must be the first Streamlit command on the page
 st.set_page_config(page_title="EchoFlag - Audio Violations", layout="centered")
 
-"""
-EchoFlag Streamlit App (no external endpoints)
 
-This UI processes audio locally by calling the internal analyzer directly and
-uses st.secrets for configuration (e.g., OPENAI_API_KEY).
-
-Run UI:
-  streamlit run src/app.py
-"""
 import os
 import tempfile
 import json
