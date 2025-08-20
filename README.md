@@ -1,6 +1,6 @@
 # EchoFlag
 
-A system for audio transcription and violation flagging with a Streamlit UI.
+A simple FastAPI backend + Streamlit client for audio transcription and violation flagging.
 
 Notes:
 - The Streamlit app in `src/app.py` uses the free Google Web Speech endpoint via `SpeechRecognition` by default (no Google Cloud project required) and OpenAI for violation analysis.
@@ -20,6 +20,11 @@ EchoFlag transcribes audio files with speaker differentiation and flags violatio
    pip install -r requirements.txt
    ```
    Note: If you are using Python 3.13+, the standard library module `audioop` was removed. This project includes the `audioop-lts` backport in `requirements.txt` to restore compatibility. Ensure your environment installs it successfully.
+
+2. Ensure FFmpeg is installed on the system (required by `pydub`). On macOS:
+   ```bash
+   brew install ffmpeg
+   ```
 
 2. (Optional) **Google Cloud Setup (Step-by-Step)**:
 
@@ -81,16 +86,40 @@ EchoFlag transcribes audio files with speaker differentiation and flags violatio
 
 ## Usage
 
-### Transcribe an Audio File with Speaker Differentiation
+### Run the Backend (FastAPI)
+
+Start the API server:
 
 ```bash
-python transcribe.py path/to/audio_file.wav [num_speakers]
+uvicorn src.api:app --reload --port 8000
 ```
 
-### Flag Violations in a Transcript
+Endpoints:
+
+- `GET /health` → simple status
+- `POST /transcribe` (multipart): fields: `file` (audio), `use_google` (bool)
+- `POST /analyze` (multipart): fields: `file` (audio), `use_google` (bool), `model` (default `gpt-4`)
+
+### Run the Frontend (Streamlit)
+
+In another terminal:
 
 ```bash
-python flagging.py path/to/transcript_file.json
+streamlit run src/app.py
+```
+
+Set API base in the sidebar if different from default `http://127.0.0.1:8000`.
+
+### CLI scripts (legacy)
+
+```bash
+python src/audio_to_transcript.py path/to/audio_file.wav
+```
+
+### Direct analysis from Python (programmatic)
+
+```bash
+python src/audio_to_violations.py --audio_file path/to/audio_file.wav --use-google --model gpt-4
 ```
 
 ## Project Structure
@@ -106,10 +135,11 @@ python flagging.py path/to/transcript_file.json
 3. **Entry point**: Set the file to `src/app.py`.
 4. **Secrets / Env Vars**: In the app settings, add environment variable:
    - `OPENAI_API_KEY`: your OpenAI API key
-5. **System dependency**: The app needs FFmpeg for audio processing. Streamlit Cloud installs it via the provided `packages.txt`.
+5. Backend note: Streamlit Cloud runs only the frontend. Host the FastAPI backend separately (e.g., on Render/Fly/EC2) and set `ECHOFLAG_API` env var to its base URL.
+6. **System dependency**: The app needs FFmpeg for audio processing locally. On Streamlit Cloud, install via `packages.txt` if you also run audio conversions there.
 6. **Run**: Deploy. The app will build and start automatically.
 
-If you see build errors related to `pocketsphinx`, `swig`, or `ffmpeg` pip packages, remove them from `requirements.txt` (they are not needed). FFmpeg is installed as a system package via `packages.txt`.
+If you see build errors related to `pocketsphinx`, `swig`, or `ffmpeg` pip packages, remove them from `requirements.txt` (they are not needed). FFmpeg should be installed as a system package.
 
 ## Future Enhancements
 

@@ -2,150 +2,67 @@
 import streamlit as st
 # Must be the first Streamlit command on the page
 st.set_page_config(page_title="EchoFlag - Audio Violations", layout="centered")
-from dotenv import load_dotenv
-load_dotenv(dotenv_path=".env")
 
 """
-EchoFlag Streamlit App
+EchoFlag Streamlit Client
 
-Features:
-- Upload an audio file (mp3/mp4/wav) OR generate a dummy LLM-based conversation that violates mutual fund rules.
-- Run violation analysis and display the JSON output.
+Minimal UI that sends audio to the FastAPI backend and displays results.
 
-Prereqs:
-- .env with OPENAI_API_KEY
-- ffmpeg installed (for pydub)
-- Requirements: streamlit, pydub, gtts, SpeechRecognition, openai
+Run backend:
+  uvicorn src.api:app --reload --port 8000
 
-Run:
+Run UI:
   streamlit run src/app.py
 """
 import os
-import sys
-import tempfile
+import requests
 from datetime import datetime
-from typing import Optional
 
-from dotenv import load_dotenv
-from pydub import AudioSegment
-
-# Ensure we can import project modules when running as a script
-PROJECT_ROOT = os.path.dirname(os.path.dirname(__file__))
-SRC_DIR = os.path.join(PROJECT_ROOT, "src")
-for p in (PROJECT_ROOT, SRC_DIR):
-    if p not in sys.path:
-        sys.path.append(p)
-
-load_dotenv(dotenv_path=".env")
-
-# Import local modules
-try:
-    from audio_to_violations import AudioToViolations
-except Exception as e:
-    st.error(f"Failed to import analyzer: {e}")
-    raise
-
-# LLM-based generator (single file conversation)
-try:
-    from llm_to_audio_conversation import LLMToAudioConversation
-    HAS_LLM_GEN = True
-except Exception as e:
-    HAS_LLM_GEN = False
+API_BASE = os.environ.get("ECHOFLAG_API", "http://127.0.0.1:8080")
 
 st.title("EchoFlag – Audio Violation Tester")
-st.caption("Upload audio or generate a dummy conversation that violates mutual fund distribution rules, then analyze and view JSON.")
+st.caption("Upload audio and analyze via the EchoFlag FastAPI backend.")
 
 with st.sidebar:
     st.header("Settings")
+    api_base = st.text_input("API Base URL", value=API_BASE)
     model = st.selectbox("LLM Model (analysis)", ["gpt-4"], index=0)
-    use_google = st.toggle("Use Google Web Speech (transcription)", value=True, help="If off, uses offline Sphinx (less accurate)")
+    use_google = st.toggle("Use Google Web Speech (transcription)", value=True, help="If off, backend may use offline Sphinx (less accurate)")
 
-# Helper: write uploaded bytes to a temp file and return path
+st.subheader("1) Upload an audio file")
+uploaded = st.file_uploader("Choose an audio file (mp3/mp4/wav)", type=["mp3", "mp4", "wav", "wav"])   
 
-def _save_upload_to_temp(uploaded_file) -> str:
-    suffix = os.path.splitext(uploaded_file.name)[1] or ".bin"
-    tmp = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
-    tmp.write(uploaded_file.getbuffer())
-    tmp.flush()
-    tmp.close()
-    return tmp.name
+col1, col2 = st.columns(2)
+with col1:
+    transcribe_clicked = st.button("Transcribe Only", disabled=uploaded is None)
+with col2:
+    analyze_clicked = st.button("Analyze Violations", type="primary", disabled=uploaded is None)
 
-# Helper: convert arbitrary audio to wav for SpeechRecognition compatibility
+if uploaded is not None:
+    st.audio(uploaded)
 
-def _to_wav_if_needed(path: str) -> str:
-    ext = os.path.splitext(path)[1].lower()
-    if ext in [".wav"]:
-        return path
+def _post_file(url: str, file, extra_form: dict):
+    files = {"file": (file.name, file.getvalue(), file.type or "application/octet-stream")}
+    data = extra_form or {}
+    r = requests.post(url, files=files, data=data, timeout=120)
+    r.raise_for_status()
+    return r.json()
+
+if transcribe_clicked and uploaded is not None:
     try:
-        seg = AudioSegment.from_file(path)
-        out_path = tempfile.NamedTemporaryFile(suffix=".wav", delete=False).name
-        seg.export(out_path, format="wav")
-        return out_path
+        st.info("Transcribing…")
+        res = _post_file(f"{api_base}/transcribe", uploaded, {"use_google": str(use_google).lower()})
+        st.success("Transcription complete")
+        st.json(res)
     except Exception as e:
-        st.error(f"Audio conversion failed: {e}")
-        return path
+        st.error(f"Transcription failed: {e}")
 
-# UI Tabs
-upload_tab, generate_tab = st.tabs(["Upload Audio", "Generate Dummy Audio (LLM)"])
-
-with upload_tab:
-    st.subheader("1) Upload an audio file")
-    uploaded = st.file_uploader("Choose an audio file (mp3/mp4/wav)", type=["mp3", "mp4", "wav"])    
-    analyze_clicked = st.button("Analyze Uploaded Audio", type="primary", disabled=uploaded is None)
-
-    if analyze_clicked and uploaded is not None:
-        path = _save_upload_to_temp(uploaded)
-        wav_path = _to_wav_if_needed(path)
-
-        st.info("Transcribing and analyzing…")
-        analyzer = AudioToViolations(output_dir="violations_output")
-        try:
-            result = analyzer.process_and_analyze(audio_file=wav_path, use_google=use_google, model=model)
-        except Exception as e:
-            st.error(f"Analysis failed: {e}")
-            result = None
-        if result:
-            st.success("Analysis complete")
-            st.download_button("Download Analysis JSON", data=str(result).encode("utf-8"), file_name=f"analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json", mime="application/json")
-            st.json(result)
-
-with generate_tab:
-    st.subheader("2) Generate dummy violation conversation and analyze")
-    if not HAS_LLM_GEN:
-        st.error("LLM generator not available. Ensure src/llm_to_audio_conversation.py is present and dependencies installed.")
-    else:
-        severity = st.selectbox("Severity", ["ALL", "RED", "ORANGE", "YELLOW"], index=0)
-        n_viol = st.slider("Number of violation patterns", min_value=1, max_value=6, value=5)
-        silence_ms = st.slider("Silence between turns (ms)", min_value=200, max_value=1500, value=700, step=50)
-        generate_clicked = st.button("Generate Conversation + Analyze", type="primary")
-
-        if generate_clicked:
-            # Generate MP4 (audio-only) plus a temp MP3 for playback/analysis
-            base_out = os.path.join("audio_output", f"conversation_{datetime.now().strftime('%Y%m%d_%H%M%S')}")
-            mp4_path = base_out + ".mp4"
-
-            try:
-                os.makedirs("audio_output", exist_ok=True)
-                conv = LLMToAudioConversation(output_path=mp4_path, silence_ms=silence_ms)
-                dialogue = conv.generate_dialogue(severity, n_viol)
-                if not dialogue:
-                    st.error("LLM did not return a dialogue. Try again.")
-                else:
-                    audio_seg = conv.synthesize_and_combine(dialogue)
-                    saved_mp4 = conv.export_mp4(audio_seg)
-
-                    # Also export MP3 for reliable browser playback and analyzer path
-                    mp3_path = base_out + ".mp3"
-                    audio_seg.export(mp3_path, format="mp3")
-
-                    st.audio(mp3_path)
-                    st.write(f"Saved: {saved_mp4}")
-
-                    st.info("Transcribing and analyzing generated audio…")
-                    analyzer = AudioToViolations(output_dir="violations_output")
-                    result = analyzer.process_and_analyze(audio_file=mp3_path, use_google=use_google, model=model)
-                    st.success("Analysis complete")
-                    st.download_button("Download Analysis JSON", data=str(result).encode("utf-8"), file_name=f"analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json", mime="application/json")
-                    st.json(result)
-            except Exception as e:
-                st.error(f"Generation or analysis failed: {e}")
+if analyze_clicked and uploaded is not None:
+    try:
+        st.info("Analyzing…")
+        res = _post_file(f"{api_base}/analyze", uploaded, {"use_google": str(use_google).lower(), "model": model})
+        st.success("Analysis complete")
+        st.download_button("Download Analysis JSON", data=str(res).encode("utf-8"), file_name=f"analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json", mime="application/json")
+        st.json(res)
+    except Exception as e:
+        st.error(f"Analysis failed: {e}")

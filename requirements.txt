@@ -1,7 +1,11 @@
 streamlit==1.37.1
+fastapi==0.112.2
+uvicorn==0.30.5
+requests==2.32.3
+python-multipart==0.0.9
+
 openai==1.37.0
 python-dotenv==1.0.0
-gtts==2.5.0
 pydub==0.25.1
 SpeechRecognition==3.10.0
 audioop-lts>=0.2.1
