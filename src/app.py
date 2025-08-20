@@ -29,22 +29,18 @@ with st.sidebar:
         help="If off, uses offline Sphinx (needs pocketsphinx installed)."
     )
 
-# Configure secrets and lazy-import analyzer
-missing_key = False
-try:
-    openai_key = st.secrets.get("OPENAI_API_KEY", None)
-    if not openai_key:
-        missing_key = True
-    else:
-        # Ensure the env var is set before importing analyzer module
-        os.environ["OPENAI_API_KEY"] = openai_key
-except Exception:
-    missing_key = True
+# Environment-only configuration (no st.secrets)
+openai_key_env = os.getenv("OPENAI_API_KEY")
+if not openai_key_env:
+    st.warning(
+        "OPENAI_API_KEY not found in environment. Set it before running, or add it to a .env file.\n"
+        "Examples:\n"
+        "  export OPENAI_API_KEY=sk-...  # macOS/Linux\n"
+        "  setx OPENAI_API_KEY sk-...    # Windows (new shell)\n"
+        "Or create a .env file with: OPENAI_API_KEY=sk-..."
+    )
 
-if missing_key:
-    st.warning("OPENAI_API_KEY not found in st.secrets. Add it to .streamlit/secrets.toml.")
-
-# Import after env var is set so the module picks up the key
+# Import analyzer; it loads .env internally and reads OPENAI_API_KEY from env
 try:
     # When running via `streamlit run src/app.py`, Python often adds the script
     # directory (src/) to sys.path, so the module is `audio_to_violations`.
