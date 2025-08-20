@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 import streamlit as st
+from dotenv import load_dotenv
+load_dotenv()
 # Must be the first Streamlit command on the page
 st.set_page_config(page_title="EchoFlag - Audio Violations", layout="centered")
 
