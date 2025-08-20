@@ -66,11 +66,11 @@ uploaded = st.file_uploader(
 )
 
 col1, col2 = st.columns(2)
+# with col1:
+    # transcribe_clicked = st.button(
+    #     "Transcribe Only", disabled=uploaded is None or AudioToViolations is None
+    # )
 with col1:
-    transcribe_clicked = st.button(
-        "Transcribe Only", disabled=uploaded is None or AudioToViolations is None
-    )
-with col2:
     analyze_clicked = st.button(
         "Analyze Violations",
         type="primary",
@@ -103,23 +103,23 @@ def _make_processor():
     )
 
 
-if transcribe_clicked and uploaded is not None and AudioToViolations is not None:
-    temp_path = None
-    try:
-        temp_path = _save_to_temp(uploaded)
-        st.info("Transcribing with OpenAI Whisper…")
-        processor = _make_processor()
-        res = processor.process_audio_file(temp_path)
-        st.success("Transcription complete")
-        st.json(res)
-    except Exception as e:
-        st.error(f"Transcription failed: {e}")
-    finally:
-        if temp_path and os.path.exists(temp_path):
-            try:
-                os.remove(temp_path)
-            except Exception:
-                pass
+# if transcribe_clicked and uploaded is not None and AudioToViolations is not None:
+#     temp_path = None
+#     try:
+#         temp_path = _save_to_temp(uploaded)
+#         st.info("Transcribing with OpenAI Whisper…")
+#         processor = _make_processor()
+#         res = processor.process_audio_file(temp_path)
+#         st.success("Transcription complete")
+#         st.json(res)
+#     except Exception as e:
+#         st.error(f"Transcription failed: {e}")
+#     finally:
+#         if temp_path and os.path.exists(temp_path):
+#             try:
+#                 os.remove(temp_path)
+#             except Exception:
+#                 pass
 
 if analyze_clicked and uploaded is not None and AudioToViolations is not None:
     temp_path = None
