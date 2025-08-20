@@ -455,21 +455,50 @@ class AudioToViolations:
         Returns:
             dict: Analysis results
         """
+        # Use a simpler, more reliable prompt for faster processing
+        simple_prompt = """You are a compliance analyzer. Analyze the following text for violations and respond with JSON only.
+
+Look for these violation types:
+- RED: Illegal activities, fraud, scams, guarantees, threats
+- ORANGE: Risk-free claims, false urgency, unrealistic promises  
+- YELLOW: Superlatives, exclusive offers, high return claims
+
+Respond with this exact JSON format:
+{
+  "violations": [
+    {
+      "severity": "RED|ORANGE|YELLOW",
+      "text": "violation text",
+      "explanation": "brief reason"
+    }
+  ],
+  "summary": "brief summary",
+  "overall_risk": "RED|ORANGE|YELLOW|NONE"
+}"""
+        
         messages = [
-            {"role": "system", "content": self.system_prompt},
-            {"role": "user", "content": self.user_instructions + "\nParagraph:\n" + paragraph},
+            {"role": "system", "content": simple_prompt},
+            {"role": "user", "content": f"Text to analyze:\n{paragraph}"},
         ]
         
         try:
             # Call OpenAI API with instance client with timeout
             print(f"Calling OpenAI API with model: {model}")
+            print(f"Message length: {len(str(messages))}")
+            
+            import time
+            start_time = time.time()
+            
             response = self.client.chat.completions.create(
                 model=model,
                 messages=messages,
                 temperature=0.1,
-                max_tokens=2000,
-                timeout=60  # 60 second timeout
+                max_tokens=1500,  # Reduced token limit
+                timeout=30  # Reduced timeout to 30 seconds
             )
+            
+            end_time = time.time()
+            print(f"OpenAI API call took {end_time - start_time:.2f} seconds")
             
             # Extract response content
             content = response.choices[0].message.content
@@ -499,7 +528,13 @@ class AudioToViolations:
             
         except Exception as e:
             print(f"Error calling OpenAI API: {str(e)}")
-            return {"error": str(e)}
+            # Return a fallback response instead of error to continue processing
+            return {
+                "violations": [],
+                "summary": f"Analysis failed due to API error: {str(e)}",
+                "overall_risk": "UNKNOWN",
+                "error": str(e)
+            }
     
     def align_or_validate_spans(self, result, paragraph, sentence_spans, transcript=None):
         """
@@ -714,6 +749,12 @@ class AudioToViolations:
         
         # Step 4: Analyze with LLM
         print(f"Analyzing paragraph: {paragraph[:200]}...")
+        
+        # Check if paragraph is too long and truncate if needed
+        if len(paragraph) > 4000:  # Limit input size
+            print(f"Paragraph too long ({len(paragraph)} chars), truncating to 4000 chars")
+            paragraph = paragraph[:4000] + "..."
+        
         analysis = self.analyze_with_llm(paragraph, model)
         print(f"LLM analysis result: {analysis}")
         
