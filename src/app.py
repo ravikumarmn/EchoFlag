@@ -51,6 +51,14 @@ except KeyError:
         )
 
 # Import analyzer; it loads .env internally and reads OPENAI_API_KEY from env
+import sys
+import os
+# Add the parent directory to sys.path to ensure imports work
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(current_dir)
+if parent_dir not in sys.path:
+    sys.path.insert(0, parent_dir)
+
 try:
     # When running via `streamlit run src/app.py`, Python often adds the script
     # directory (src/) to sys.path, so the module is `audio_to_violations`.
