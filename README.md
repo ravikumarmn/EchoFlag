@@ -19,6 +19,7 @@ EchoFlag transcribes audio files with speaker differentiation and flags violatio
    ```bash
    pip install -r requirements.txt
    ```
+   Note: If you are using Python 3.13+, the standard library module `audioop` was removed. This project includes the `audioop-lts` backport in `requirements.txt` to restore compatibility. Ensure your environment installs it successfully.
 
 2. (Optional) **Google Cloud Setup (Step-by-Step)**:
 
