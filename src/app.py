@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-# Apply patches first before any imports
+import streamlit as st
+# Must be the first Streamlit command on the page
+st.set_page_config(page_title="EchoFlag - Audio Violations", layout="centered")
+
+# Apply patches early
 try:
     # Import aifc patch first
     from aifc_patch import apply_patches as apply_aifc_patches
@@ -32,7 +36,6 @@ import tempfile
 from datetime import datetime
 from typing import Optional
 
-import streamlit as st
 from dotenv import load_dotenv
 from pydub import AudioSegment
 
@@ -59,7 +62,6 @@ try:
 except Exception as e:
     HAS_LLM_GEN = False
 
-st.set_page_config(page_title="EchoFlag - Audio Violations", layout="centered")
 st.title("EchoFlag – Audio Violation Tester")
 st.caption("Upload audio or generate a dummy conversation that violates mutual fund distribution rules, then analyze and view JSON.")
 
