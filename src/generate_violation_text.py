@@ -9,9 +9,23 @@ import argparse
 from datetime import datetime
 from openai import OpenAI
 from dotenv import load_dotenv
+try:
+    import streamlit as st
+    _HAS_ST = True
+except Exception:
+    _HAS_ST = False
 
 # Load environment variables
 load_dotenv(dotenv_path=".env")
+
+def _get_openai_api_key():
+    if _HAS_ST:
+        try:
+            if "OPENAI_API_KEY" in st.secrets:
+                return st.secrets["OPENAI_API_KEY"]
+        except Exception:
+            pass
+    return os.getenv("OPENAI_API_KEY")
 
 class ViolationTextGenerator:
     """Generate financial conversation text with compliance violations using LLM."""
@@ -30,7 +44,7 @@ class ViolationTextGenerator:
             os.makedirs(output_dir)
         
         # Initialize OpenAI client
-        self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        self.client = OpenAI(api_key=_get_openai_api_key())
         
         # Define violation categories
         self.violation_categories = {

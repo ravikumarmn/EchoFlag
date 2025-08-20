@@ -24,10 +24,25 @@ from typing import Dict, Any, List, Tuple, Optional
 
 from openai import OpenAI
 from dotenv import load_dotenv
+try:
+    import streamlit as st
+    _HAS_ST = True
+except Exception:
+    _HAS_ST = False
 
 # Load env and set API key
 load_dotenv(dotenv_path=".env")
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+def _get_openai_api_key():
+    if _HAS_ST:
+        try:
+            if "OPENAI_API_KEY" in st.secrets:
+                return st.secrets["OPENAI_API_KEY"]
+        except Exception:
+            pass
+    return os.getenv("OPENAI_API_KEY")
+
+client = OpenAI(api_key=_get_openai_api_key())
 
 CUSTOM_SYSTEM_PROMPT = (
     "You are EchoFlag AI, an expert compliance analyst for financial conversations. "

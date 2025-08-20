@@ -18,12 +18,27 @@ from openai import OpenAI
 import speech_recognition as sr
 from pydub import AudioSegment
 from dotenv import load_dotenv
+try:
+    import streamlit as st  # for secrets in Streamlit context
+    _HAS_ST = True
+except Exception:
+    _HAS_ST = False
 
-# Load environment variables
+# Load environment variables (optional; Streamlit secrets preferred in app context)
 load_dotenv()
 
+def _get_openai_api_key() -> Optional[str]:
+    """Resolve OpenAI API key from Streamlit secrets if available, otherwise env."""
+    if _HAS_ST:
+        try:
+            if "OPENAI_API_KEY" in st.secrets:
+                return st.secrets["OPENAI_API_KEY"]
+        except Exception:
+            pass
+    return os.getenv("OPENAI_API_KEY")
+
 # Configure OpenAI client
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+client = OpenAI(api_key=_get_openai_api_key())
 
 
 class AudioToViolations:
