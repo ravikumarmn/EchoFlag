@@ -1,15 +1,4 @@
 #!/usr/bin/env python3
-# Apply patches first before any imports
-try:
-    # Import aifc patch first
-    from aifc_patch import apply_patches as apply_aifc_patches
-    apply_aifc_patches()
-    # Then import pydub patch
-    from pydub_patch import apply_patches
-    apply_patches()
-except ImportError as e:
-    import sys
-    print(f"Error applying patches: {e}", file=sys.stderr)
 
 """
 Generate a Salesperson vs Client conversation with explicit mutual fund distribution violations
@@ -40,7 +29,7 @@ from openai import OpenAI
 from gtts import gTTS
 from pydub import AudioSegment
 
-load_dotenv()
+load_dotenv(dotenv_path=".env")
 
 SALES_SPK = "Salesperson"
 CLIENT_SPK = "Client"

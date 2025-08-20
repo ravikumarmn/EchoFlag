@@ -11,7 +11,7 @@ from openai import OpenAI
 from dotenv import load_dotenv
 
 # Load environment variables
-load_dotenv()
+load_dotenv(dotenv_path=".env")
 
 class ViolationTextGenerator:
     """Generate financial conversation text with compliance violations using LLM."""

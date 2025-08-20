@@ -1,15 +1,4 @@
 #!/usr/bin/env python3
-# Apply patches first before any imports
-try:
-    # Import aifc patch first
-    from aifc_patch import apply_patches as apply_aifc_patches
-    apply_aifc_patches()
-    # Then import pydub patch
-    from pydub_patch import apply_patches
-    apply_patches()
-except ImportError as e:
-    import sys
-    print(f"Error applying patches: {e}", file=sys.stderr)
 
 """
 Audio to Violations Analyzer for EchoFlag
@@ -31,7 +20,7 @@ from pydub import AudioSegment
 from dotenv import load_dotenv
 
 # Load environment variables
-load_dotenv()
+load_dotenv(dotenv_path=".env")
 
 # Configure OpenAI client
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))

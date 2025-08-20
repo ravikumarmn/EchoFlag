@@ -2,18 +2,8 @@
 import streamlit as st
 # Must be the first Streamlit command on the page
 st.set_page_config(page_title="EchoFlag - Audio Violations", layout="centered")
-
-# Apply patches early
-try:
-    # Import aifc patch first
-    from aifc_patch import apply_patches as apply_aifc_patches
-    apply_aifc_patches()
-    # Then import pydub patch
-    from pydub_patch import apply_patches
-    apply_patches()
-except ImportError as e:
-    import sys
-    print(f"Error applying patches: {e}", file=sys.stderr)
+from dotenv import load_dotenv
+load_dotenv(dotenv_path=".env")
 
 """
 EchoFlag Streamlit App
@@ -46,7 +36,7 @@ for p in (PROJECT_ROOT, SRC_DIR):
     if p not in sys.path:
         sys.path.append(p)
 
-load_dotenv()
+load_dotenv(dotenv_path=".env")
 
 # Import local modules
 try:

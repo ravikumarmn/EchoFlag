@@ -22,12 +22,12 @@ import argparse
 from datetime import datetime
 from typing import Dict, Any, List, Tuple, Optional
 
-import openai
+from openai import OpenAI
 from dotenv import load_dotenv
 
 # Load env and set API key
-load_dotenv()
-openai.api_key = os.getenv("OPENAI_API_KEY")
+load_dotenv(dotenv_path=".env")
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 CUSTOM_SYSTEM_PROMPT = (
     "You are EchoFlag AI, an expert compliance analyst for financial conversations. "
@@ -117,7 +117,7 @@ def call_openai_span_flagger(paragraph: str, model: str = "gpt-4") -> Dict[str, 
         {"role": "system", "content": CUSTOM_SYSTEM_PROMPT},
         {"role": "user", "content": USER_INSTRUCTIONS + "\nParagraph:\n" + paragraph},
     ]
-    resp = openai.ChatCompletion.create(
+    resp = client.chat.completions.create(
         model=model,
         messages=messages,
         temperature=0.1,
