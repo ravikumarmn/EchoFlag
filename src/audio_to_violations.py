@@ -1,8 +1,5 @@
 #!/usr/bin/env python3
 # Audio processing with Google Cloud Speech-to-Text and OpenAI GPT
-from openai import OpenAI
-from google.cloud import speech
-
 """
 Audio to Violations Analyzer for EchoFlag
 
