@@ -223,8 +223,8 @@ class AudioToViolations:
                 language_code="en-US",
                 diarization_config=diarization_config,
                 enable_automatic_punctuation=True,
-                enable_word_time_offsets=True,
-                model="latest_long",  # Best model for longer audio
+                enable_word_time_offsets=False,  # Disable for faster processing
+                model="latest_short",  # Faster model for shorter audio
                 audio_channel_count=1,  # Mono audio
             )
             
@@ -673,7 +673,7 @@ class AudioToViolations:
         }
         return out
     
-    def process_and_analyze(self, audio_file, use_google=True, model="gpt-4"):
+    def process_and_analyze(self, audio_file, use_google=False, model="gpt-4"):
         """
         Process audio file and analyze for violations using Google Speech + GPT.
         
@@ -718,6 +718,12 @@ class AudioToViolations:
         
         # Step 4: Analyze with LLM
         print(f"Analyzing paragraph: {paragraph[:200]}...")
+        
+        # Limit paragraph size for faster processing
+        if len(paragraph) > 3000:
+            print(f"Truncating long paragraph ({len(paragraph)} chars) to 3000 chars for faster analysis")
+            paragraph = paragraph[:3000] + "..."
+        
         analysis = self.analyze_with_llm(paragraph, model)
         print(f"LLM analysis result: {analysis}")
         

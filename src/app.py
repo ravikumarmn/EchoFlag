@@ -22,8 +22,8 @@ with st.sidebar:
     # Speaker diarization toggle
     use_google_speech = st.checkbox(
         "Enable Speaker Diarization", 
-        value=True,
-        help="Use Google Cloud Speech-to-Text for speaker identification"
+        value=False,  # Default to faster Whisper
+        help="Use Google Cloud Speech-to-Text for speaker identification (slower but more accurate)"
     )
     
     if use_google_speech:
