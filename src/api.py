@@ -64,7 +64,7 @@ def transcribe(
 def analyze(
     file: UploadFile = File(...),
     use_google: bool = Form(True),
-    model: str = Form("gpt-4"),
+    model: str = Form("gpt-4o"),
 ):
     try:
         ext = os.path.splitext(file.filename or "")[1] or ".wav"
