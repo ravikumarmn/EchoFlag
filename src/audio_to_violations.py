@@ -16,11 +16,11 @@ import tempfile
 
 from openai import OpenAI
 try:
-    from google.cloud import speech
+    import speech_recognition as sr
     GOOGLE_SPEECH_AVAILABLE = True
 except ImportError:
     GOOGLE_SPEECH_AVAILABLE = False
-    print("Google Cloud Speech not available - using OpenAI Whisper only")
+    print("SpeechRecognition library not available - using OpenAI Whisper only")
 
 try:
     from pydub import AudioSegment
@@ -58,24 +58,19 @@ class AudioToViolations:
         # Initialize OpenAI client
         self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
         
-        # Initialize Google Cloud Speech client with error handling
-        self.speech_client = None
+        # Initialize Google Web Speech API client (SpeechRecognition library)
+        self.recognizer = None
         self.google_available = False
         if GOOGLE_SPEECH_AVAILABLE:
             try:
-                # Check if running in Streamlit Cloud environment
-                if os.getenv("STREAMLIT_CLOUD"):
-                    print("Running in Streamlit Cloud - Google Cloud Speech disabled")
-                    self.google_available = False
-                else:
-                    self.speech_client = speech.SpeechClient()
-                    self.google_available = True
-                    print("Google Cloud Speech initialized successfully")
+                self.recognizer = sr.Recognizer()
+                self.google_available = True
+                print("Google Web Speech API initialized successfully")
             except Exception as e:
-                print(f"Warning: Google Cloud Speech not available: {e}")
+                print(f"Warning: Google Web Speech API not available: {e}")
                 print("Falling back to OpenAI Whisper for transcription")
         else:
-            print("Google Cloud Speech library not installed - using OpenAI Whisper only")
+            print("SpeechRecognition library not installed - using OpenAI Whisper only")
         
         # Custom prompts for LLM
         self.system_prompt = (
@@ -191,138 +186,65 @@ class AudioToViolations:
     
     def _transcribe_with_google_diarization(self, audio_file):
         """
-        Transcribe audio file using Google Cloud Speech with speaker diarization.
+        Transcribe audio file using Google Web Speech API.
+        Note: This public API doesn't support speaker diarization,
+        so we'll use basic speaker detection heuristics.
         
         Args:
             audio_file (str): Path to audio file
             
         Returns:
-            dict: Transcription with speaker information
+            dict: Transcription with basic speaker separation
         """
         try:
-            # Convert audio to WAV format for Google Speech API
+            # Convert audio to WAV format for better compatibility
             wav_file = self.convert_to_wav(audio_file)
             
-            # Read audio file
-            with open(wav_file, "rb") as audio_file_obj:
-                content = audio_file_obj.read()
-            
-            # Configure recognition with proper diarization settings
-            audio = speech.RecognitionAudio(content=content)
-            
-            # Speaker diarization configuration
-            diarization_config = speech.SpeakerDiarizationConfig(
-                enable_speaker_diarization=True,
-                min_speaker_count=2,
-                max_speaker_count=6,  # Allow up to 6 speakers
-            )
-            
-            config = speech.RecognitionConfig(
-                encoding=speech.RecognitionConfig.AudioEncoding.LINEAR16,
-                sample_rate_hertz=16000,
-                language_code="en-US",
-                diarization_config=diarization_config,
-                enable_automatic_punctuation=True,
-                enable_word_time_offsets=True,  # Re-enable for better accuracy
-                model="latest_long",  # Better model for accuracy
-                audio_channel_count=1,  # Mono audio
-            )
-            
-            # Perform transcription
-            response = self.speech_client.recognize(config=config, audio=audio)
-            
-            # Process results with speaker diarization
-            transcript_data = self._process_diarized_response(response)
-            
-            # Clean up temporary WAV file
-            if wav_file != audio_file:
-                os.unlink(wav_file)
-            
-            return transcript_data
+            # Use Google Web Speech API
+            return self._transcribe_with_google_web_api(wav_file)
             
         except Exception as e:
-            return {"error": f"Google Speech transcription failed: {e}"}
+            return {"error": f"Google Web Speech transcription failed: {e}"}
     
-    def _process_diarized_response(self, response):
-        """
-        Process Google Speech API response with speaker diarization.
-        
-        Args:
-            response: Google Speech API response
+    def _transcribe_with_google_web_api(self, wav_file):
+        """Transcribe audio using Google Web Speech API via SpeechRecognition library"""
+        try:
+            # Load audio file
+            with sr.AudioFile(wav_file) as source:
+                # Adjust for ambient noise and record audio
+                self.recognizer.adjust_for_ambient_noise(source, duration=0.5)
+                audio_data = self.recognizer.record(source)
             
-        Returns:
-            dict: Processed transcript with speaker information
-        """
-        # Check if we have results
-        if not response.results:
-            return {"error": "No transcription results"}
-        
-        # Get the best result (usually the last one for long audio)
-        result = response.results[-1]
-        
-        # Check if we have words with speaker information
-        if not result.alternatives[0].words:
-            # Fallback to basic transcript with speaker detection
-            text = result.alternatives[0].transcript
+            print("Transcribing with Google Web Speech API...")
+            
+            # Use Google Web Speech API for transcription
+            text = self.recognizer.recognize_google(audio_data, language="en-US")
+            
+            print(f"Transcription completed: {text[:100]}...")
+            
+            # Apply basic speaker detection since Web Speech API doesn't support diarization
             speakers_dict = self._detect_speakers_from_text(text)
+            
+            # Clean up temporary WAV file
+            if wav_file != os.path.basename(wav_file) and os.path.exists(wav_file):
+                os.unlink(wav_file)
+            
             return {
                 "transcript": speakers_dict,
                 "full_text": text,
-                "words_info": [],
-                "method": "google_fallback_with_detection"
+                "method": "google_web_api_with_detection"
             }
-        
-        # Extract words with speaker tags
-        words_info = []
-        for word_info in result.alternatives[0].words:
-            words_info.append({
-                "word": word_info.word,
-                "start_time": word_info.start_time.total_seconds(),
-                "end_time": word_info.end_time.total_seconds(),
-                "speaker_tag": word_info.speaker_tag
-            })
-        
-        print(f"Found {len(words_info)} words with speaker tags")
-        
-        # Group words by speaker
-        speakers = {}
-        current_speaker = None
-        current_text = []
-        
-        for word_info in words_info:
-            speaker = f"Speaker_{word_info['speaker_tag']}"
             
-            if current_speaker != speaker:
-                # Save previous speaker's text
-                if current_speaker and current_text:
-                    if current_speaker not in speakers:
-                        speakers[current_speaker] = []
-                    speakers[current_speaker].append(" ".join(current_text))
-                
-                # Start new speaker
-                current_speaker = speaker
-                current_text = [word_info["word"]]
-            else:
-                current_text.append(word_info["word"])
-        
-        # Don't forget the last speaker
-        if current_speaker and current_text:
-            if current_speaker not in speakers:
-                speakers[current_speaker] = []
-            speakers[current_speaker].append(" ".join(current_text))
-        
-        # Combine all text segments for each speaker
-        final_transcript = {}
-        for speaker, segments in speakers.items():
-            final_transcript[speaker] = " ".join(segments)
-        
-        print(f"Detected speakers: {list(final_transcript.keys())}")
-        
-        return {
-            "transcript": final_transcript,
-            "words_info": words_info,
-            "full_text": result.alternatives[0].transcript
-        }
+        except sr.UnknownValueError:
+            return {"error": "Google Web Speech API could not understand the audio"}
+        except sr.RequestError as e:
+            return {"error": f"Google Web Speech API request failed: {e}"}
+        except Exception as e:
+            # Clean up on error
+            if wav_file != os.path.basename(wav_file) and os.path.exists(wav_file):
+                os.unlink(wav_file)
+            return {"error": f"Google Web Speech transcription failed: {e}"}
+    
     
     def extract_speaker_from_filename(self, filename):
         """
