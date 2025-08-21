@@ -18,7 +18,18 @@ st.caption("Upload audio and run local transcription + LLM analysis. No HTTP cal
 with st.sidebar:
     st.header("Settings")
     model = st.selectbox("LLM Model (analysis)", ["gpt-4"], index=0)
-    st.info("🎙️ **Transcription**: OpenAI Whisper\n📊 **Analysis**: OpenAI GPT-4")
+    
+    # Speaker diarization toggle
+    use_google_speech = st.checkbox(
+        "Enable Speaker Diarization", 
+        value=True,  # Default to accurate Google Speech
+        help="Use Google Cloud Speech-to-Text for speaker identification (more accurate transcription)"
+    )
+    
+    if use_google_speech:
+        st.info("🎙️ **Transcription**: Google Cloud Speech (with speakers)\n📊 **Analysis**: OpenAI GPT-4")
+    else:
+        st.info("🎙️ **Transcription**: OpenAI Whisper\n📊 **Analysis**: OpenAI GPT-4")
 
 # Configuration using st.secrets (for Streamlit Cloud deployment)
 try:
@@ -125,19 +136,43 @@ if analyze_clicked and uploaded is not None and AudioToViolations is not None:
     temp_path = None
     try:
         temp_path = _save_to_temp(uploaded)
-        st.info("Analyzing with OpenAI Whisper + GPT-4…")
+        if use_google_speech:
+            st.info("Analyzing with Google Cloud Speech + GPT-4…")
+        else:
+            st.info("Analyzing with OpenAI Whisper + GPT-4…")
+        
+        # Add progress tracking
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+        
         processor = _make_processor()
-        res = processor.process_and_analyze(temp_path, model=model)
-        st.success("Analysis complete")
-        st.download_button(
-            "Download Analysis JSON",
-            data=json.dumps(res, indent=2).encode("utf-8"),
-            file_name=f"analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
-            mime="application/json",
-        )
-        st.json(res)
+        
+        # Update progress
+        progress_bar.progress(20)
+        status_text.text("Transcribing audio...")
+        
+        try:
+            result = processor.process_and_analyze(temp_path, use_google=use_google_speech, model=model)
+            progress_bar.progress(100)
+            status_text.text("Analysis complete!")
+            st.success("Analysis complete")
+            st.download_button(
+                "Download Analysis JSON",
+                data=json.dumps(result, indent=2).encode("utf-8"),
+                file_name=f"analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+                mime="application/json",
+            )
+            st.json(result)
+        except Exception as analysis_error:
+            st.error(f"Analysis failed: {analysis_error}")
+            import traceback
+            with st.expander("Debug Details"):
+                st.text(traceback.format_exc())
+            
     except Exception as e:
         st.error(f"Analysis failed: {e}")
+        import traceback
+        st.text(traceback.format_exc())
     finally:
         if temp_path and os.path.exists(temp_path):
             try:

@@ -3,8 +3,8 @@ fastapi==0.112.2
 uvicorn==0.30.5
 requests==2.32.3
 python-multipart==0.0.9
-httpx==0.24.1
 openai==1.37.0
+httpx==0.24.1
 python-dotenv==1.0.0
 pydub==0.25.1
 SpeechRecognition==3.10.0

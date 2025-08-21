@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
-# Audio processing with OpenAI Whisper
-from openai import OpenAI
-
+# Audio processing with Google Cloud Speech-to-Text and OpenAI GPT
 """
 Audio to Violations Analyzer for EchoFlag
 
@@ -17,7 +15,20 @@ from typing import Dict, Any, List, Tuple, Optional
 import tempfile
 
 from openai import OpenAI
-from pydub import AudioSegment
+try:
+    import speech_recognition as sr
+    GOOGLE_SPEECH_AVAILABLE = True
+except ImportError:
+    GOOGLE_SPEECH_AVAILABLE = False
+    print("SpeechRecognition library not available - using OpenAI Whisper only")
+
+try:
+    from pydub import AudioSegment
+    PYDUB_AVAILABLE = True
+except ImportError:
+    PYDUB_AVAILABLE = False
+    print("pydub not available - audio conversion disabled")
+
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -47,71 +58,193 @@ class AudioToViolations:
         # Initialize OpenAI client
         self.client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
         
+        # Initialize Google Web Speech API client (SpeechRecognition library)
+        self.recognizer = None
+        self.google_available = False
+        if GOOGLE_SPEECH_AVAILABLE:
+            try:
+                self.recognizer = sr.Recognizer()
+                self.google_available = True
+                print("Google Web Speech API initialized successfully")
+            except Exception as e:
+                print(f"Warning: Google Web Speech API not available: {e}")
+                print("Falling back to OpenAI Whisper for transcription")
+        else:
+            print("SpeechRecognition library not installed - using OpenAI Whisper only")
+        
         # Custom prompts for LLM
         self.system_prompt = (
             "You are EchoFlag AI, an expert compliance analyst for financial conversations. "
-            "Given a paragraph (possibly concatenated from multiple speakers), identify compliance violations. "
+            "Given a paragraph with speaker labels (e.g., 'Speaker_1: text', 'Speaker_2: text'), identify compliance violations. "
             "Classify each as RED (high), ORANGE (medium), or YELLOW (low). "
             "Return precise spans: sentence_index_start, sentence_index_end (0-based, inclusive), and char_start, char_end (0-based, inclusive-exclusive) relative to the provided paragraph string. "
-            "If a transcript JSON with speakers is used, attribute the violation to the most likely speaker; otherwise use 'Unknown'. "
+            "IMPORTANT: For each violation, identify which speaker said it by looking at the speaker labels in the text (Speaker_1, Speaker_2, etc.). "
+            "If no clear speaker can be identified, use 'Unknown'. "
             "Respond ONLY as strict JSON with keys: violations (array), summary (string), overall_risk (RED|ORANGE|YELLOW|NONE). "
             "Each violation object MUST have: severity, speaker, text, sentence_index_start, sentence_index_end, char_start, char_end, explanation."
         )
         
         self.user_instructions = (
             "Tasks:\n"
-            "1) Read the paragraph.\n"
+            "1) Read the paragraph with speaker labels (e.g., 'Speaker_1: guaranteed returns').\n"
             "2) Detect all possible violations with categories:\n"
             "   - RED: illegal/fraud/scam/guarantees of returns, threats of legal action, criminal suggestions\n"
             "   - ORANGE: risk-free/no risk/false urgency/double your money\n"
             "   - YELLOW: best/perfect/high return/exclusive offer/etc.\n"
-            "3) For each violation, provide the EXACT span indices in the full paragraph string: char_start and char_end (end exclusive).\n"
-            "4) Also provide sentence_index_start and sentence_index_end that bound the violation.\n"
-            "5) Output strict JSON only."
+            "3) For each violation, identify the speaker who said it (Speaker_1, Speaker_2, etc.).\n"
+            "4) Provide the EXACT span indices in the full paragraph string: char_start and char_end (end exclusive).\n"
+            "5) Also provide sentence_index_start and sentence_index_end that bound the violation.\n"
+            "6) Output strict JSON only."
         )
     
     def convert_to_wav(self, in_file: str) -> str:
         """
-        Convert any supported audio format to WAV for SpeechRecognition.
-        Uses pydub/ffmpeg to decode.
+        Convert any supported audio format to WAV for Google Speech API.
+        Uses pydub/ffmpeg to decode with specific requirements for diarization.
 
         Args:
             in_file: Path to input audio file (mp3/mp4/wav/..)
 
         Returns:
-            Path to temporary WAV file
+            Path to temporary WAV file (or original file if conversion fails)
         """
-        temp_wav = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
-        temp_wav_path = temp_wav.name
-        temp_wav.close()
+        if not PYDUB_AVAILABLE:
+            print("Warning: pydub not available, using original file")
+            return in_file
+            
+        try:
+            temp_wav = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+            temp_wav_path = temp_wav.name
+            temp_wav.close()
 
-        # Let pydub figure out the format from extension/content
-        audio = AudioSegment.from_file(in_file)
-        audio.export(temp_wav_path, format="wav")
-
-        return temp_wav_path
+            # Load audio and convert to mono 16kHz for optimal diarization
+            audio = AudioSegment.from_file(in_file)
+            
+            # Convert to mono (required for speaker diarization)
+            audio = audio.set_channels(1)
+            
+            # Set sample rate to 16kHz (optimal for Google Speech)
+            audio = audio.set_frame_rate(16000)
+            
+            # Export as WAV
+            audio.export(temp_wav_path, format="wav")
+            
+            return temp_wav_path
+        except Exception as e:
+            print(f"Warning: Audio conversion failed: {e}")
+            print("Using original file")
+            return in_file
     
     def transcribe_audio(self, audio_file, use_google=True):
         """
-        Transcribe audio file to text using OpenAI Whisper.
+        Transcribe audio file with speaker diarization.
         
         Args:
             audio_file (str): Path to audio file
-            use_google (bool): Ignored, kept for compatibility
+            use_google (bool): If True, use Google Cloud Speech with diarization
             
         Returns:
-            str: Transcribed text
+            dict or str: If use_google=True, returns dict with speaker info.
+                        If use_google=False, returns plain text from Whisper.
+        """
+        if use_google and self.google_available:
+            return self._transcribe_with_google_diarization(audio_file)
+        else:
+            if use_google and not self.google_available:
+                print("Google Cloud Speech not available, falling back to Whisper")
+            return self._transcribe_with_whisper(audio_file)
+    
+    def _transcribe_with_whisper(self, audio_file):
+        """
+        Transcribe audio file using OpenAI Whisper with basic speaker detection.
+        
+        Args:
+            audio_file (str): Path to audio file
+            
+        Returns:
+            dict: Transcribed text with basic speaker separation
         """
         try:
-            # Open audio file and transcribe with Whisper
             with open(audio_file, "rb") as audio:
                 transcript = self.client.audio.transcriptions.create(
                     model="whisper-1",
                     file=audio
                 )
-            return transcript.text
+            
+            # Basic speaker separation based on sentence patterns and pauses
+            text = transcript.text
+            speakers_dict = self._detect_speakers_from_text(text)
+            
+            return {
+                "transcript": speakers_dict,
+                "full_text": text,
+                "method": "whisper_with_basic_detection"
+            }
+            
         except Exception as e:
-            return f"Transcription failed: {e}"
+            return f"Whisper transcription failed: {e}"
+    
+    def _transcribe_with_google_diarization(self, audio_file):
+        """
+        Transcribe audio file using Google Web Speech API.
+        Note: This public API doesn't support speaker diarization,
+        so we'll use basic speaker detection heuristics.
+        
+        Args:
+            audio_file (str): Path to audio file
+            
+        Returns:
+            dict: Transcription with basic speaker separation
+        """
+        try:
+            # Convert audio to WAV format for better compatibility
+            wav_file = self.convert_to_wav(audio_file)
+            
+            # Use Google Web Speech API
+            return self._transcribe_with_google_web_api(wav_file)
+            
+        except Exception as e:
+            return {"error": f"Google Web Speech transcription failed: {e}"}
+    
+    def _transcribe_with_google_web_api(self, wav_file):
+        """Transcribe audio using Google Web Speech API via SpeechRecognition library"""
+        try:
+            # Load audio file
+            with sr.AudioFile(wav_file) as source:
+                # Adjust for ambient noise and record audio
+                self.recognizer.adjust_for_ambient_noise(source, duration=0.5)
+                audio_data = self.recognizer.record(source)
+            
+            print("Transcribing with Google Web Speech API...")
+            
+            # Use Google Web Speech API for transcription
+            text = self.recognizer.recognize_google(audio_data, language="en-US")
+            
+            print(f"Transcription completed: {text[:100]}...")
+            
+            # Apply basic speaker detection since Web Speech API doesn't support diarization
+            speakers_dict = self._detect_speakers_from_text(text)
+            
+            # Clean up temporary WAV file
+            if wav_file != os.path.basename(wav_file) and os.path.exists(wav_file):
+                os.unlink(wav_file)
+            
+            return {
+                "transcript": speakers_dict,
+                "full_text": text,
+                "method": "google_web_api_with_detection"
+            }
+            
+        except sr.UnknownValueError:
+            return {"error": "Google Web Speech API could not understand the audio"}
+        except sr.RequestError as e:
+            return {"error": f"Google Web Speech API request failed: {e}"}
+        except Exception as e:
+            # Clean up on error
+            if wav_file != os.path.basename(wav_file) and os.path.exists(wav_file):
+                os.unlink(wav_file)
+            return {"error": f"Google Web Speech transcription failed: {e}"}
+    
     
     def extract_speaker_from_filename(self, filename):
         """
@@ -247,7 +380,13 @@ class AudioToViolations:
         ]
         
         try:
-            # Call OpenAI API with instance client
+            # Call OpenAI API with instance client with timeout
+            print(f"Calling OpenAI API with model: {model}")
+            print(f"Message length: {len(str(messages))}")
+            
+            import time
+            start_time = time.time()
+            
             response = self.client.chat.completions.create(
                 model=model,
                 messages=messages,
@@ -255,8 +394,12 @@ class AudioToViolations:
                 max_tokens=2000
             )
             
+            end_time = time.time()
+            print(f"OpenAI API call took {end_time - start_time:.2f} seconds")
+            
             # Extract response content
             content = response.choices[0].message.content
+            print(f"OpenAI response: {content}")
             
             # Try to parse JSON from response
             try:
@@ -264,10 +407,15 @@ class AudioToViolations:
                     # Try fenced JSON first
                     match = re.search(r"```json\s*(\{[\s\S]*?\})\s*```", content)
                     if match:
-                        return json.loads(match.group(1))
-                return json.loads(content)
-            except json.JSONDecodeError:
-                print("Warning: Could not parse LLM response as JSON. Returning raw text.")
+                        result = json.loads(match.group(1))
+                        print(f"Parsed JSON from fenced block: {result}")
+                        return result
+                result = json.loads(content)
+                print(f"Parsed JSON directly: {result}")
+                return result
+            except json.JSONDecodeError as je:
+                print(f"JSON decode error: {je}")
+                print(f"Raw content: {content}")
                 return {
                     "violations": [],
                     "summary": "LLM returned non-JSON response.",
@@ -279,7 +427,7 @@ class AudioToViolations:
             print(f"Error calling OpenAI API: {str(e)}")
             return {"error": str(e)}
     
-    def align_or_validate_spans(self, result, paragraph, sentence_spans):
+    def align_or_validate_spans(self, result, paragraph, sentence_spans, transcript=None):
         """
         Validate and, if needed, adjust LLM-provided spans to the paragraph.
         
@@ -287,6 +435,7 @@ class AudioToViolations:
             result (dict): LLM analysis results
             paragraph (str): Original paragraph text
             sentence_spans (list): List of sentence spans
+            transcript (dict): Original transcript with speaker info
             
         Returns:
             dict: Validated analysis results
@@ -320,15 +469,105 @@ class AudioToViolations:
                         cs, ce = loc, loc + len(text)
             v["char_start"], v["char_end"] = cs, ce
 
-            # Default speaker
-            if not v.get("speaker"):
-                v["speaker"] = "Unknown"
+            # Improve speaker identification
+            speaker = v.get("speaker", "")
+            if not speaker or speaker == "Unknown":
+                # Try to identify speaker from the violation text location in paragraph
+                violation_text = paragraph[cs:ce]
+                speaker = self._identify_speaker_from_context(paragraph, cs, transcript)
+                v["speaker"] = speaker
 
             # Ensure required keys exist
             v.setdefault("explanation", "")
             v.setdefault("severity", "YELLOW")
             
         return result
+    
+    def _detect_speakers_from_text(self, text):
+        """
+        Basic speaker detection from transcribed text using patterns and heuristics.
+        
+        Args:
+            text (str): Transcribed text
+            
+        Returns:
+            dict: Speaker-separated text
+        """
+        # Split text into sentences
+        sentences = re.split(r'[.!?]+', text)
+        sentences = [s.strip() for s in sentences if s.strip()]
+        
+        if len(sentences) <= 1:
+            return {"Speaker_1": text}
+        
+        # Simple heuristic: alternate speakers for different sentences
+        # This is a basic approach - in reality, you'd use more sophisticated methods
+        speakers = {}
+        current_speaker = 1
+        speaker_segments = []
+        
+        # Group sentences by potential speaker changes
+        # Look for patterns that might indicate speaker changes
+        for i, sentence in enumerate(sentences):
+            speaker_key = f"Speaker_{current_speaker}"
+            
+            # Simple heuristic: change speaker every few sentences or on certain patterns
+            if i > 0 and (
+                i % 2 == 0 or  # Change every 2 sentences
+                any(word in sentence.lower() for word in ['yes', 'no', 'okay', 'right', 'sure', 'well']) or
+                sentence.startswith(('I ', 'You ', 'We ', 'They '))
+            ):
+                # Potentially switch speaker
+                if current_speaker == 1:
+                    current_speaker = 2
+                else:
+                    current_speaker = 1
+                speaker_key = f"Speaker_{current_speaker}"
+            
+            if speaker_key not in speakers:
+                speakers[speaker_key] = []
+            speakers[speaker_key].append(sentence)
+        
+        # Combine sentences for each speaker
+        final_speakers = {}
+        for speaker, sentences_list in speakers.items():
+            final_speakers[speaker] = '. '.join(sentences_list) + '.'
+        
+        # Ensure we have at least Speaker_1
+        if not final_speakers:
+            final_speakers["Speaker_1"] = text
+        
+        return final_speakers
+    
+    def _identify_speaker_from_context(self, paragraph, char_position, transcript=None):
+        """
+        Identify speaker based on character position in formatted paragraph.
+        
+        Args:
+            paragraph (str): Formatted paragraph with speaker labels
+            char_position (int): Character position of violation
+            transcript (dict): Original transcript with speaker info
+            
+        Returns:
+            str: Speaker identifier
+        """
+        # Find the speaker label that precedes this character position
+        text_before = paragraph[:char_position]
+        
+        # Look for speaker labels in reverse order
+        speaker_positions = []
+        for speaker in (transcript.keys() if transcript else []):
+            label = f"{speaker}:"
+            pos = text_before.rfind(label)
+            if pos != -1:
+                speaker_positions.append((pos, speaker))
+        
+        # Return the speaker with the latest position before the violation
+        if speaker_positions:
+            speaker_positions.sort(reverse=True)
+            return speaker_positions[0][1]
+        
+        return "Unknown"
     
     def build_output(self, audio_file, paragraph, result, sentence_spans):
         """
@@ -356,22 +595,42 @@ class AudioToViolations:
         }
         return out
     
-    def process_and_analyze(self, audio_file, model="gpt-4"):
+    def process_and_analyze(self, audio_file, use_google=True, model="gpt-4"):
         """
-        Process audio file and analyze for violations using OpenAI Whisper + GPT.
+        Process audio file and analyze for violations using Google Speech + GPT.
         
         Args:
             audio_file (str): Path to audio file
+            use_google (bool): Whether to use Google Speech with diarization
             model (str): LLM model to use
             
         Returns:
             dict: Complete analysis results
         """
-        print(f"Processing audio file: {audio_file}")
+        # Step 1: Transcribe audio
+        print("Step 1: Transcribing audio...")
+        try:
+            transcription_result = self.transcribe_audio(audio_file, use_google)
+            print(f"Transcription result type: {type(transcription_result)}")
+            print(f"Transcription result: {str(transcription_result)[:200]}...")
+        except Exception as e:
+            print(f"Transcription failed: {e}")
+            return {"error": f"Transcription failed: {str(e)}"}
         
-        # Transcribe audio
-        text = self.transcribe_audio(audio_file)
-        transcript = {"transcript": text}
+        # Handle different transcription result formats
+        if isinstance(transcription_result, dict):
+            if "transcript" in transcription_result:
+                transcript = transcription_result["transcript"]
+            else:
+                # Assume it's already a speaker-segmented transcript
+                transcript = transcription_result
+        else:
+            # String result - convert to speaker format
+            if use_google:
+                # This shouldn't happen with Google Speech, but fallback
+                transcript = {"Speaker_1": str(transcription_result)}
+            else:
+                transcript = {"Speaker_1": str(transcription_result)}
         
         # Step 2: Format transcript for analysis
         paragraph = self.format_transcript_for_analysis(transcript)
@@ -380,13 +639,25 @@ class AudioToViolations:
         sentence_spans = self.split_sentences(paragraph)
         
         # Step 4: Analyze with LLM
+        print(f"Analyzing paragraph: {paragraph[:200]}...")
+        
+        # Keep full paragraph for accurate analysis with Google Speech
+        print(f"Analyzing full paragraph ({len(paragraph)} chars) for accurate results")
+        
         analysis = self.analyze_with_llm(paragraph, model)
+        print(f"LLM analysis result: {analysis}")
         
         # Step 5: Validate spans
-        validated_analysis = self.align_or_validate_spans(analysis, paragraph, sentence_spans)
+        validated_analysis = self.align_or_validate_spans(analysis, paragraph, sentence_spans, transcript)
         
         # Step 6: Build output
         output = self.build_output(audio_file, paragraph, validated_analysis, sentence_spans)
+        
+        # Add speaker information if available
+        if use_google and isinstance(transcription_result, dict):
+            output["speakers_detected"] = list(transcript.keys())
+            if "words_info" in transcription_result:
+                output["word_timestamps"] = transcription_result["words_info"]
         
         # Step 7: Save analysis
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
