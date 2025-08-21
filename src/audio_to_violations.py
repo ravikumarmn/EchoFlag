@@ -13,6 +13,7 @@ import argparse
 from datetime import datetime
 from typing import Dict, Any, List, Tuple, Optional
 import tempfile
+import time
 
 from openai import OpenAI
 try:
@@ -30,6 +31,15 @@ except ImportError:
     print("pydub not available - audio conversion disabled")
 
 from dotenv import load_dotenv
+
+try:
+    from src.usage_tracker import UsageTracker
+except ImportError:
+    try:
+        from usage_tracker import UsageTracker
+    except ImportError:
+        print("UsageTracker not available - usage tracking disabled")
+        UsageTracker = None
 
 # Load environment variables
 load_dotenv()
@@ -71,6 +81,9 @@ class AudioToViolations:
                 print("Falling back to OpenAI Whisper for transcription")
         else:
             print("SpeechRecognition library not installed - using OpenAI Whisper only")
+            
+        # Initialize usage tracker
+        self.usage_tracker = UsageTracker() if UsageTracker else None
         
         # Custom prompts for LLM
         self.system_prompt = (
@@ -165,11 +178,18 @@ class AudioToViolations:
             dict: Transcribed text with basic speaker separation
         """
         try:
+            # Track audio duration for usage calculation
+            if self.usage_tracker:
+                audio_duration = self.usage_tracker.get_audio_duration(audio_file)
+                self.usage_tracker.track_whisper_usage(audio_duration)
+            
+            start_time = time.time()
             with open(audio_file, "rb") as audio:
                 transcript = self.client.audio.transcriptions.create(
                     model="whisper-1",
                     file=audio
                 )
+            end_time = time.time()
             
             # Basic speaker separation based on sentence patterns and pauses
             text = transcript.text
@@ -209,6 +229,11 @@ class AudioToViolations:
     def _transcribe_with_google_web_api(self, wav_file):
         """Transcribe audio using Google Web Speech API via SpeechRecognition library"""
         try:
+            # Track audio duration for usage calculation
+            if self.usage_tracker:
+                audio_duration = self.usage_tracker.get_audio_duration(wav_file)
+                self.usage_tracker.track_google_speech_usage(audio_duration)
+            
             # Load audio file
             with sr.AudioFile(wav_file) as source:
                 # Adjust for ambient noise and record audio
@@ -217,8 +242,10 @@ class AudioToViolations:
             
             print("Transcribing with Google Web Speech API...")
             
+            start_time = time.time()
             # Use Google Web Speech API for transcription
             text = self.recognizer.recognize_google(audio_data, language="en-US")
+            end_time = time.time()
             
             print(f"Transcription completed: {text[:100]}...")
             
@@ -396,6 +423,10 @@ class AudioToViolations:
             
             end_time = time.time()
             print(f"OpenAI API call took {end_time - start_time:.2f} seconds")
+            
+            # Track token usage
+            if self.usage_tracker:
+                self.usage_tracker.track_openai_chat_usage(response, model)
             
             # Extract response content
             content = response.choices[0].message.content
@@ -593,9 +624,14 @@ class AudioToViolations:
             "summary": result.get("summary", ""),
             "overall_risk": result.get("overall_risk", "NONE"),
         }
+        
+        # Add usage information if available
+        if self.usage_tracker:
+            out["usage"] = self.usage_tracker.get_usage_summary()
+            
         return out
     
-    def process_and_analyze(self, audio_file, use_google=True, model="gpt-4"):
+    def process_and_analyze(self, audio_file, use_google=True, model="gpt-4o"):
         """
         Process audio file and analyze for violations using Google Speech + GPT.
         
@@ -607,6 +643,10 @@ class AudioToViolations:
         Returns:
             dict: Complete analysis results
         """
+        # Reset usage tracker for new analysis
+        if self.usage_tracker:
+            self.usage_tracker.reset()
+            
         # Step 1: Transcribe audio
         print("Step 1: Transcribing audio...")
         try:
