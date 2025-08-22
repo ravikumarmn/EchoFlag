@@ -167,50 +167,30 @@ if analyze_clicked and uploaded is not None and AudioToViolations is not None:
             if "usage" in result:
                 with st.expander("📊 Token Usage and Cost"):
                     usage = result["usage"]
-                    
+
                     # Create columns for transcription and analysis
                     col1, col2 = st.columns(2)
-                    
+
                     # Transcription usage
                     with col1:
                         st.subheader("Transcription")
-                        if usage["transcription"]["openai_whisper"]["audio_seconds"] > 0:
-                            st.write(f"**OpenAI Whisper**")
-                            st.write(f"Audio duration: {usage['transcription']['openai_whisper']['audio_seconds']:.2f} seconds")
-                            if 'rate_per_minute' in usage['transcription']['openai_whisper']:
-                                st.write(f"Rate: ${usage['transcription']['openai_whisper']['rate_per_minute']}/min")
-                            st.write(f"Cost: ${usage['transcription']['openai_whisper']['estimated_cost']:.4f}")
-                        
-                        if usage["transcription"]["google_speech"]["audio_seconds"] > 0:
-                            st.write(f"**Google Speech-to-Text (estimate)**")
-                            st.write(f"Audio duration: {usage['transcription']['google_speech']['audio_seconds']:.2f} seconds")
-                            if 'rate_per_minute' in usage['transcription']['google_speech']:
-                                st.write(f"Rate: ${usage['transcription']['google_speech']['rate_per_minute']}/min")
-                            if 'tier' in usage['transcription']['google_speech']:
-                                st.write(f"Tier: {usage['transcription']['google_speech']['tier']}")
-                            if 'note' in usage['transcription']['google_speech']:
-                                st.caption(usage['transcription']['google_speech']['note'])
-                            st.write(f"Cost: ${usage['transcription']['google_speech']['estimated_cost']:.4f}")
-                    
+                        for service, data in usage["transcription"].items():
+                            if data["audio_seconds"] > 0:
+                                st.write(f"**{service.replace('_', ' ').title()}**")
+                                st.write(f"Audio duration: {data['audio_seconds']:.2f} seconds")
+                                st.write(f"Rate: ${data['rate_per_minute']}/min")
+                                st.write(f"Cost: ${data['estimated_cost']:.4f}")
+
                     # Analysis usage
                     with col2:
                         st.subheader("Analysis")
                         st.write(f"**Model**: {usage['analysis']['model']}")
                         st.write(f"Input tokens: {usage['analysis']['prompt_tokens']}")
-                        if 'cached_tokens' in usage['analysis']:
-                            st.write(f"Cached input tokens: {usage['analysis']['cached_tokens']}")
+                        st.write(f"Cached input tokens: {usage['analysis']['cached_tokens']}")
                         st.write(f"Output tokens: {usage['analysis']['completion_tokens']}")
                         st.write(f"Total tokens: {usage['analysis']['total_tokens']}")
-                        if 'pricing' in usage['analysis']:
-                            p = usage['analysis']['pricing']
-                            st.write("Pricing (per 1M tokens):")
-                            st.write(f"- Input: ${p.get('input_per_million', 0)}")
-                            st.write(f"- Cached input: ${p.get('cached_input_per_million', p.get('input_per_million', 0))}")
-                            st.write(f"- Output: ${p.get('output_per_million', 0)}")
-                            if 'tier' in p:
-                                st.write(f"Tier: {p['tier']}")
                         st.write(f"Cost: ${usage['analysis']['estimated_cost']:.4f}")
-                    
+
                     # Total cost
                     st.subheader("Total Cost")
                     st.write(f"**Total estimated cost**: ${usage['total_estimated_cost']:.4f}")

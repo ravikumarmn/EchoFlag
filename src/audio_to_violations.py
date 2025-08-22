@@ -623,6 +623,11 @@ class AudioToViolations:
             "violations": result.get("violations", []),
             "summary": result.get("summary", ""),
             "overall_risk": result.get("overall_risk", "NONE"),
+            "usage": {
+                "transcription": self.usage_tracker.transcription_usage,
+                "analysis": self.usage_tracker.analysis_usage,
+                "total_estimated_cost": self.usage_tracker.total_estimated_cost
+            }
         }
         
         # Add usage information if available
